@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.local
+*.log
+.DS_Store
+dist/
+.vercel
+
+# Secrets / local-only state — never commit
+*.local.json
+.testnet-wallet.local.json
+.testnet-buyer-wallet.local.json
+.claude/settings.local.json
+.remember/

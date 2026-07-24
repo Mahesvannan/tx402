@@ -1,0 +1,31 @@
+{
+  "name": "tx402",
+  "version": "0.1.0",
+  "description": "Plain-English explanations of Algorand transactions, as a pay-per-call API.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node test/decoder.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@x402/avm": "^2.19.0",
+    "@x402/core": "^2.19.0",
+    "@x402/express": "^2.19.0",
+    "@x402/paywall": "^2.19.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2"
+  },
+  "keywords": [
+    "algorand",
+    "x402",
+    "transaction",
+    "explainer",
+    "agent"
+  ],
+  "license": "MIT"
+}
