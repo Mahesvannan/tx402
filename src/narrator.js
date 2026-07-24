@@ -12,6 +12,8 @@
  * separate, more expensive route — never as a dependency of this one.
  */
 
+import { shortenAddress } from './decoder.js';
+
 const DATE_OPTS = {
   year: 'numeric',
   month: 'long',
@@ -39,7 +41,7 @@ export function narrate(tx) {
       const t = tx.transfer;
       if (t.closeRemainderTo) {
         return `${prefix}wallet ${from} sent ${t.amount} ALGO to ${tx.receiverShort} and closed its account, ` +
-          `sending the remaining balance to ${shorten(t.closeRemainderTo)}. Paid ${fee}.`;
+          `sending the remaining balance to ${shortenAddress(t.closeRemainderTo)}. Paid ${fee}.`;
       }
       if (t.baseUnits === 0) {
         return `${prefix}wallet ${from} sent a 0 ALGO transaction to ${tx.receiverShort}` +
@@ -103,9 +105,4 @@ function describeOnCompletion(oc) {
     case 'noop':
     default: return 'called';
   }
-}
-
-function shorten(addr) {
-  if (!addr || addr.length < 16) return addr;
-  return `${addr.slice(0, 6)}…${addr.slice(-6)}`;
 }

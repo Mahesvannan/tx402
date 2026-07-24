@@ -45,6 +45,13 @@ export function shortenAddress(addr) {
   return `${addr.slice(0, 6)}…${addr.slice(-6)}`;
 }
 
+/** Unix seconds -> ISO 8601, or null for absent/out-of-range values. Never throws. */
+export function roundTimeToIso(roundTime) {
+  if (!roundTime) return null;
+  const date = new Date(roundTime * 1000);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 /** Decode the note field. Returns plain text when it is printable, else null. */
 export function decodeNote(noteB64) {
   if (!noteB64) return null;
@@ -83,7 +90,7 @@ export function decodeTransaction(raw, ctx = {}) {
       unit: 'ALGO',
     },
     confirmedRound: raw['confirmed-round'] ?? null,
-    timestamp: roundTime ? new Date(roundTime * 1000).toISOString() : null,
+    timestamp: roundTimeToIso(roundTime),
     note: decodeNote(raw.note),
     groupId: raw.group ?? null,
     isGrouped: Boolean(raw.group),

@@ -7,15 +7,65 @@
  */
 
 import express from 'express';
+import helmet from 'helmet';
 import { fetchTransaction, fetchAsset, HttpError } from './indexer.js';
 import { decodeTransaction } from './decoder.js';
 import { narrate } from './narrator.js';
 import { buildPaymentGate, paymentsConfigured, explainPrice } from './payments.js';
+import { rateLimit } from './rateLimit.js';
 
 const app = express();
 const PORT = process.env.PORT || 4021;
 
-app.use(express.json());
+// If deployed behind a reverse proxy (Vercel, Railway, etc.), trust the
+// first hop's X-Forwarded-For so per-IP rate limiting sees real client IPs
+// instead of the proxy's single address. Harmless for local/direct use —
+// there's no X-Forwarded-For header to trust in that case.
+app.set('trust proxy', 1);
+
+app.use(helmet());
+app.use(express.json({ limit: '8kb' }));
+
+// A valid Algorand transaction ID is exactly 52 base32 characters.
+const TXID_PATTERN = /^[A-Z2-7]{52}$/;
+
+// /explain proxies to the public Algorand indexer on every call. In free
+// mode (no PAY_TO configured) there is no payment gate to throttle abuse,
+// so this is the only thing standing between the service and someone using
+// it as a free, unbounded indexer proxy. Kept intentionally strict when
+// unpaid; generous but still present when paid, as defense-in-depth against
+// a buggy or malicious paying client hammering the upstream indexer.
+const explainLimiter = paymentsConfigured
+  ? rateLimit({ windowMs: 60_000, max: 60, message: 'Rate limit exceeded. Try again shortly.' })
+  : rateLimit({
+      windowMs: 60_000,
+      max: 10,
+      message:
+        '/explain is running in free (unpaid) mode and is rate-limited to 10 requests/minute ' +
+        'per IP. Configure PAY_TO to enable paid access without this cap.',
+    });
+app.use('/explain', explainLimiter);
+
+// Validate the request shape BEFORE the payment gate. The gate can't know
+// anything about our route's business rules — without this, a client would
+// have to pay for a request that was always going to 400 (missing/malformed
+// txid), since the gate demands payment for anything matching "GET /explain"
+// regardless of query params.
+app.use('/explain', (req, res, next) => {
+  const txid = (req.query.txid || '').trim().toUpperCase();
+  if (!txid) {
+    return res.status(400).json({ error: 'Missing required query parameter: txid' });
+  }
+  if (!TXID_PATTERN.test(txid)) {
+    return res.status(400).json({
+      error: 'Invalid txid: expected 52 base32 characters (A-Z, 2-7).',
+    });
+  }
+  next();
+});
+
+const discoveryLimiter = rateLimit({ windowMs: 60_000, max: 120 });
+app.use('/discovery', discoveryLimiter);
 
 const paymentGate = buildPaymentGate();
 if (paymentGate) {
@@ -63,12 +113,9 @@ app.get('/discovery', (_req, res) => {
 });
 
 app.get('/explain', async (req, res) => {
-  const txid = (req.query.txid || '').trim();
+  // txid presence/format already validated upstream, before the payment gate.
+  const txid = req.query.txid.trim().toUpperCase();
   const network = (req.query.network || 'mainnet').trim();
-
-  if (!txid) {
-    return res.status(400).json({ error: 'Missing required query parameter: txid' });
-  }
 
   try {
     const raw = await fetchTransaction(txid, network);

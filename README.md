@@ -95,6 +95,21 @@ To pay for a call yourself, use an x402-aware client (see the
 — a bare `curl` will just get a `402 Payment Required` with a
 `PAYMENT-REQUIRED` header describing what to pay.
 
+## Security notes
+
+- **Every string in the response is untrusted on-chain data.** `summary`,
+  `details.transfer.assetName`, `details.transfer.unit`, and `details.note`
+  are all attacker-controlled — anyone can mint an ASA named
+  `<script>...</script>` or put arbitrary text in a transaction note. JSON
+  encoding makes this safe as JSON; it is **not** HTML-escaped. If you render
+  any of these fields as HTML, escape them yourself first.
+- `/explain` is rate-limited per IP (`src/rateLimit.js`) — stricter when
+  running in free/unpaid mode (no `PAY_TO` set), since that mode has no
+  payment gate to throttle abuse of the underlying indexer proxy.
+- `txid` is validated as 52 base32 characters before any network call.
+- `PAY_TO` and the resolved USDC asset ID are validated at startup — the
+  server refuses to boot rather than advertise a broken or wrong-network price.
+
 ## Before Mainnet: verify the app IDs
 
 Every entry in `src/knownApps.js` is marked `verified: false`. Confirm each
@@ -111,7 +126,8 @@ copying your idea cannot shortcut.
 
 ## Notes
 
-- Public AlgoNode endpoints need no API key. Swap `INDEXER_URL` if you hit limits.
+- Public AlgoNode endpoints need no API key. Swap `MAINNET_INDEXER_URL` /
+  `TESTNET_INDEXER_URL` if you hit limits.
 - Grouped transactions (`group` field set) usually mean a swap or multi-step
   DeFi action. Explaining the *whole group* rather than one leg is the single
   biggest quality upgrade available — a natural v2.

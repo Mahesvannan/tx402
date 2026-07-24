@@ -16,16 +16,55 @@ import dotenv from 'dotenv';
 import { paymentMiddleware } from '@x402/express';
 import { x402ResourceServer, HTTPFacilitatorClient } from '@x402/core/server';
 import { ExactAvmScheme } from '@x402/avm/exact/server';
-import { ALGORAND_TESTNET_CAIP2, USDC_TESTNET_ASA_ID } from '@x402/avm';
+import {
+  ALGORAND_TESTNET_CAIP2,
+  USDC_TESTNET_ASA_ID,
+  USDC_MAINNET_ASA_ID,
+  getNetworkFromCaip2,
+  isValidAlgorandAddress,
+} from '@x402/avm';
 
 dotenv.config();
 
 const FACILITATOR_URL = process.env.FACILITATOR_URL || 'https://facilitator.goplausible.xyz';
 const NETWORK = process.env.NETWORK || ALGORAND_TESTNET_CAIP2;
+
+// Default the USDC asset from whichever network we're actually pointed at —
+// never hardcode Testnet. Flipping NETWORK to Mainnet without also setting
+// USDC_ASSET_ID must not silently quote the Testnet USDC asset id there.
+//
+// @x402/avm exports its ASA id constants as strings, so every comparison
+// here goes through Number() — comparing a coerced env var against a raw
+// string constant would silently never match.
+const RESOLVED_NETWORK = getNetworkFromCaip2(NETWORK);
+const TESTNET_USDC_ASSET_ID = Number(USDC_TESTNET_ASA_ID);
+const MAINNET_USDC_ASSET_ID = Number(USDC_MAINNET_ASA_ID);
+const DEFAULT_USDC_ASSET_ID =
+  RESOLVED_NETWORK === 'mainnet' ? MAINNET_USDC_ASSET_ID : TESTNET_USDC_ASSET_ID;
 const USDC_ASSET_ID = process.env.USDC_ASSET_ID
   ? Number(process.env.USDC_ASSET_ID)
-  : USDC_TESTNET_ASA_ID;
+  : DEFAULT_USDC_ASSET_ID;
+
+// Belt-and-suspenders: even an *explicit* USDC_ASSET_ID that is the other
+// network's canonical USDC id is almost certainly a stale .env left over
+// from switching NETWORK — refuse to boot rather than quote the wrong asset.
+const WRONG_NETWORK_USDC_ID =
+  RESOLVED_NETWORK === 'mainnet' ? TESTNET_USDC_ASSET_ID : MAINNET_USDC_ASSET_ID;
+if (USDC_ASSET_ID === WRONG_NETWORK_USDC_ID) {
+  throw new Error(
+    `USDC_ASSET_ID (${USDC_ASSET_ID}) is the ${RESOLVED_NETWORK === 'mainnet' ? 'Testnet' : 'Mainnet'} ` +
+      `USDC asset id, but NETWORK is set to ${RESOLVED_NETWORK}. This looks like a stale .env — ` +
+      'update USDC_ASSET_ID (or remove it to auto-derive from NETWORK) before starting the server.'
+  );
+}
+
 const PAY_TO = process.env.PAY_TO;
+if (PAY_TO && !isValidAlgorandAddress(PAY_TO)) {
+  throw new Error(
+    `PAY_TO ("${PAY_TO}") is not a valid Algorand address. Fix .env before starting the server.`
+  );
+}
+
 const EXPLAIN_PRICE = process.env.EXPLAIN_PRICE_USD || '$0.005';
 
 export const paymentsConfigured = Boolean(PAY_TO);
