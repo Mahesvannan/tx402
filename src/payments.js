@@ -41,9 +41,16 @@ const TESTNET_USDC_ASSET_ID = Number(USDC_TESTNET_ASA_ID);
 const MAINNET_USDC_ASSET_ID = Number(USDC_MAINNET_ASA_ID);
 const DEFAULT_USDC_ASSET_ID =
   RESOLVED_NETWORK === 'mainnet' ? MAINNET_USDC_ASSET_ID : TESTNET_USDC_ASSET_ID;
-const USDC_ASSET_ID = process.env.USDC_ASSET_ID
-  ? Number(process.env.USDC_ASSET_ID)
-  : DEFAULT_USDC_ASSET_ID;
+let USDC_ASSET_ID = DEFAULT_USDC_ASSET_ID;
+if (process.env.USDC_ASSET_ID) {
+  USDC_ASSET_ID = Number(process.env.USDC_ASSET_ID);
+  if (!Number.isInteger(USDC_ASSET_ID) || USDC_ASSET_ID <= 0) {
+    throw new Error(
+      `USDC_ASSET_ID ("${process.env.USDC_ASSET_ID}") is not a positive integer. ` +
+        'Fix .env before starting the server.'
+    );
+  }
+}
 
 // Belt-and-suspenders: even an *explicit* USDC_ASSET_ID that is the other
 // network's canonical USDC id is almost certainly a stale .env left over
@@ -70,6 +77,9 @@ const EXPLAIN_PRICE = process.env.EXPLAIN_PRICE_USD || '$0.005';
 export const paymentsConfigured = Boolean(PAY_TO);
 
 export const explainPrice = EXPLAIN_PRICE;
+
+/** 'mainnet' or 'testnet' — for status messages, never hardcode "Testnet" instead. */
+export const resolvedNetwork = RESOLVED_NETWORK;
 
 /**
  * @returns {import('express').RequestHandler | null} the payment middleware,

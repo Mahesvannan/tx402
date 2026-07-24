@@ -11,6 +11,19 @@
 export function rateLimit({ windowMs, max, message }) {
   const hits = new Map(); // ip -> { count, resetAt }
 
+  // Without this, `hits` grows by one entry per distinct client IP forever —
+  // trivial to inflate via spoofed/rotating IPs — turning the anti-abuse
+  // limiter into its own slow memory-exhaustion bug. Sweep expired entries
+  // periodically instead of on every request (cheap, and doesn't need to be
+  // exact). unref() so this timer never keeps the process alive on its own.
+  const sweep = setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of hits) {
+      if (now >= entry.resetAt) hits.delete(ip);
+    }
+  }, windowMs);
+  sweep.unref?.();
+
   return function rateLimitMiddleware(req, res, next) {
     const ip = req.ip || req.socket?.remoteAddress || 'unknown';
     const now = Date.now();

@@ -11,23 +11,38 @@ import helmet from 'helmet';
 import { fetchTransaction, fetchAsset, HttpError } from './indexer.js';
 import { decodeTransaction } from './decoder.js';
 import { narrate } from './narrator.js';
-import { buildPaymentGate, paymentsConfigured, explainPrice } from './payments.js';
+import { buildPaymentGate, paymentsConfigured, explainPrice, resolvedNetwork } from './payments.js';
 import { rateLimit } from './rateLimit.js';
 
 const app = express();
 const PORT = process.env.PORT || 4021;
 
-// If deployed behind a reverse proxy (Vercel, Railway, etc.), trust the
-// first hop's X-Forwarded-For so per-IP rate limiting sees real client IPs
-// instead of the proxy's single address. Harmless for local/direct use —
-// there's no X-Forwarded-For header to trust in that case.
-app.set('trust proxy', 1);
+// Trusting X-Forwarded-For is only safe when a proxy you control is
+// guaranteed to overwrite whatever a client sends — otherwise a client can
+// set that header itself and get a fresh req.ip on every request, which
+// fully defeats per-IP rate limiting (verified: rotating the header let a
+// client blow through the /explain rate limit entirely). Default OFF; only
+// enable this once you've actually deployed behind such a proxy (Vercel,
+// Railway, etc.) and confirmed it strips/overwrites inbound XFF.
+if (process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', 1);
+}
 
 app.use(helmet());
 app.use(express.json({ limit: '8kb' }));
 
 // A valid Algorand transaction ID is exactly 52 base32 characters.
 const TXID_PATTERN = /^[A-Z2-7]{52}$/;
+
+// req.query values aren't always strings — repeated query keys (?txid=a&txid=b)
+// produce an array, and bracket-style keys (?txid[x]=y) produce an object.
+// Calling .trim() on either throws, which (with no global error handler)
+// used to crash to Express's default handler and leak a full stack trace
+// with absolute file paths straight into the response body. Verified live.
+function getQueryString(req, key) {
+  const raw = req.query[key];
+  return typeof raw === 'string' ? raw : null;
+}
 
 // /explain proxies to the public Algorand indexer on every call. In free
 // mode (no PAY_TO configured) there is no payment gate to throttle abuse,
@@ -52,7 +67,7 @@ app.use('/explain', explainLimiter);
 // txid), since the gate demands payment for anything matching "GET /explain"
 // regardless of query params.
 app.use('/explain', (req, res, next) => {
-  const txid = (req.query.txid || '').trim().toUpperCase();
+  const txid = (getQueryString(req, 'txid') || '').trim().toUpperCase();
   if (!txid) {
     return res.status(400).json({ error: 'Missing required query parameter: txid' });
   }
@@ -70,7 +85,7 @@ app.use('/discovery', discoveryLimiter);
 const paymentGate = buildPaymentGate();
 if (paymentGate) {
   app.use(paymentGate);
-  console.log(`x402 payments ENABLED for /explain (${explainPrice} per call, Testnet)`);
+  console.log(`x402 payments ENABLED for /explain (${explainPrice} per call, ${resolvedNetwork})`);
 } else {
   console.warn(
     'x402 PAY_TO not set in .env — /explain is running FREE (Phase 1 fallback). ' +
@@ -114,8 +129,8 @@ app.get('/discovery', (_req, res) => {
 
 app.get('/explain', async (req, res) => {
   // txid presence/format already validated upstream, before the payment gate.
-  const txid = req.query.txid.trim().toUpperCase();
-  const network = (req.query.network || 'mainnet').trim();
+  const txid = getQueryString(req, 'txid').trim().toUpperCase();
+  const network = (getQueryString(req, 'network') || 'mainnet').trim();
 
   try {
     const raw = await fetchTransaction(txid, network);
@@ -143,6 +158,19 @@ app.get('/explain', async (req, res) => {
     console.error('Unexpected error:', err);
     res.status(500).json({ error: 'Internal error while explaining transaction.' });
   }
+});
+
+// Global fallback error handler — MUST be registered last (Express only
+// treats a 4-arg middleware as an error handler). Catches anything that
+// throws synchronously in middleware/routes before it reaches the /explain
+// handler's own try/catch (e.g. a bug in a route defined above). Without
+// this, Express's default handler renders the full stack trace, including
+// absolute file paths, straight into the response body.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Internal server error.' });
 });
 
 app.listen(PORT, () => {
