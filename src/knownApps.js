@@ -16,7 +16,6 @@
 export const KNOWN_APPS = {
   // --- DEXes / AMMs ---
   1002541853: { name: 'Tinyman AMM v2', category: 'dex', verified: false },
-  1002541853n: { name: 'Tinyman AMM v2', category: 'dex', verified: false },
 
   // --- Lending ---
   971368268: { name: 'Folks Finance', category: 'lending', verified: false },

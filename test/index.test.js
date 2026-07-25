@@ -183,5 +183,61 @@ console.log('\nindex.js (free mode) — rate limiting (H2) and X-Forwarded-For b
   await closeServer(server);
 }
 
+// ---------------------------------------------------------------------------
+
+console.log('\nindex.js (free mode) — /health?deep=1 is not an unlimited outbound amplifier (F1 regression)');
+{
+  const { server, baseUrl } = await startServer({});
+
+  await test('an unknown network for the deep check returns a clean 400, not a false "outage"', async () => {
+    const res = await fetch(`${baseUrl}/health?deep=1&network=bogusnet`);
+    const body = await res.json();
+    assert.strictEqual(res.status, 400);
+    assert.ok(body.error);
+  });
+
+  await test('a repeated deep check within the TTL window is served from cache, not a fresh upstream ping', async () => {
+    const t0 = Date.now();
+    await fetch(`${baseUrl}/health?deep=1`);
+    const firstMs = Date.now() - t0;
+
+    const t1 = Date.now();
+    await fetch(`${baseUrl}/health?deep=1`);
+    const secondMs = Date.now() - t1;
+
+    assert.ok(
+      secondMs < firstMs,
+      `expected the cached repeat (${secondMs}ms) to be faster than the first real check ` +
+        `(${firstMs}ms) — if not, every request is re-pinging upstream (F1 regressed)`
+    );
+  });
+
+  await test('plain /health stays unlimited even after many deep requests hit the limiter', async () => {
+    // Exhaust the deep-health limiter (max 20/min) first...
+    for (let i = 0; i < 21; i++) {
+      await fetch(`${baseUrl}/health?deep=1`);
+    }
+    // ...then confirm plain /health (no `deep`) is untouched by that limiter.
+    const res = await fetch(`${baseUrl}/health`);
+    assert.strictEqual(res.status, 200);
+  });
+
+  await test('a burst past the deep-health limiter gets 429s, not unlimited outbound pings', async () => {
+    const statuses = [];
+    for (let i = 0; i < 25; i++) {
+      const res = await fetch(`${baseUrl}/health?deep=1`);
+      statuses.push(res.status);
+    }
+    const rateLimited = statuses.filter((s) => s === 429).length;
+    assert.ok(
+      rateLimited > 0,
+      `expected at least one 429 among ${JSON.stringify(statuses)} — ` +
+        'if none appear, /health?deep=1 has no rate limit (F1 regressed)'
+    );
+  });
+
+  await closeServer(server);
+}
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

@@ -108,6 +108,45 @@ app.use('/explain', (req, res, next) => {
 const discoveryLimiter = rateLimit({ windowMs: 60_000, max: 120 });
 app.use('/discovery', discoveryLimiter);
 
+// F1: /health?deep=1 pings external services (indexer, facilitator) and — unlike
+// plain /health — must not be reachable at unlimited rate, or it becomes a free
+// amplifier against those services (the same "unauthenticated unbounded proxy"
+// class H2 fixed for /explain, just on a new route). Two layers, both needed:
+// a small per-IP limiter bounds request volume, and the cache below bounds
+// actual upstream calls to at most one per network per TTL window regardless
+// of how many requests arrive — so even a burst that slips under the per-IP
+// cap can't multiply into repeated outbound pings.
+const deepHealthLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Too many deep health checks. Try again shortly.',
+});
+
+const DEEP_HEALTH_TTL_MS = 15_000;
+const deepHealthCache = new Map(); // network -> { result, expiresAt }
+const deepHealthInFlight = new Map(); // network -> Promise<result>, dedupes concurrent misses
+
+async function getDeepHealth(network) {
+  const cached = deepHealthCache.get(network);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+
+  const inFlight = deepHealthInFlight.get(network);
+  if (inFlight) return inFlight;
+
+  const promise = (async () => {
+    const [indexerOk, facilitatorOk] = await Promise.all([
+      checkIndexerHealth(network),
+      paymentsConfigured ? checkFacilitatorHealth() : Promise.resolve(true),
+    ]);
+    const result = { indexerOk, facilitatorOk };
+    deepHealthCache.set(network, { result, expiresAt: Date.now() + DEEP_HEALTH_TTL_MS });
+    deepHealthInFlight.delete(network);
+    return result;
+  })();
+  deepHealthInFlight.set(network, promise);
+  return promise;
+}
+
 const paymentGate = buildPaymentGate();
 if (paymentGate) {
   app.use(paymentGate);
@@ -128,29 +167,40 @@ if (paymentGate) {
  * on (the Algorand indexer, and — only when payments are configured — the
  * x402 facilitator). Kept opt-in and off the default path so routine
  * load-balancer polling stays fast and never itself hammers those services.
+ * The deep path alone is rate-limited and result-cached (see deepHealthLimiter
+ * / getDeepHealth above) — plain `/health` stays intentionally unlimited.
  */
-app.get('/health', async (req, res) => {
-  if (req.query.deep !== '1') {
-    return res.json({ ok: true, service: 'tx402', version: APP_VERSION });
+app.get(
+  '/health',
+  (req, res, next) => {
+    if (req.query.deep !== '1') {
+      return res.json({ ok: true, service: 'tx402', version: APP_VERSION });
+    }
+    next();
+  },
+  deepHealthLimiter,
+  async (req, res) => {
+    const network = (getQueryString(req, 'network') || 'mainnet').trim();
+    if (network !== 'mainnet' && network !== 'testnet') {
+      return res.status(400).json({
+        error: 'Unknown network for deep health check. Use "mainnet" or "testnet".',
+      });
+    }
+
+    const { indexerOk, facilitatorOk } = await getDeepHealth(network);
+    const ok = indexerOk && facilitatorOk;
+
+    res.status(ok ? 200 : 503).json({
+      ok,
+      service: 'tx402',
+      version: APP_VERSION,
+      checks: {
+        indexer: indexerOk,
+        facilitator: paymentsConfigured ? facilitatorOk : 'not configured',
+      },
+    });
   }
-
-  const network = (getQueryString(req, 'network') || 'mainnet').trim();
-  const [indexerOk, facilitatorOk] = await Promise.all([
-    checkIndexerHealth(network),
-    paymentsConfigured ? checkFacilitatorHealth() : Promise.resolve(true),
-  ]);
-  const ok = indexerOk && facilitatorOk;
-
-  res.status(ok ? 200 : 503).json({
-    ok,
-    service: 'tx402',
-    version: APP_VERSION,
-    checks: {
-      indexer: indexerOk,
-      facilitator: paymentsConfigured ? facilitatorOk : 'not configured',
-    },
-  });
-});
+);
 
 /**
  * Free forever: machine-readable description of what this service sells.

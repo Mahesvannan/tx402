@@ -1,0 +1,17 @@
+node_modules
+.git
+.env
+.env.local
+.env.example
+*.local.json
+.testnet-wallet.local.json
+.testnet-buyer-wallet.local.json
+.remember
+.claude
+test
+scripts
+*.md
+Dockerfile
+Procfile
+.dockerignore
+.gitignore
