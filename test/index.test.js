@@ -107,6 +107,14 @@ console.log('\nindex.js (free mode) — basic endpoints & hardening');
     assert.ok(body.version, 'version should be present');
   });
 
+  await test('/health?deep=1 reports readiness of external deps (D3), facilitator not configured in free mode', async () => {
+    const res = await fetch(`${baseUrl}/health?deep=1`);
+    const body = await res.json();
+    assert.ok(res.status === 200 || res.status === 503, 'deep health must be 200 or 503, never a crash');
+    assert.strictEqual(typeof body.checks.indexer, 'boolean');
+    assert.strictEqual(body.checks.facilitator, 'not configured');
+  });
+
   await test('/discovery reports priced:false in free mode', async () => {
     const res = await fetch(`${baseUrl}/discovery`);
     const body = await res.json();

@@ -82,6 +82,25 @@ export const explainPrice = EXPLAIN_PRICE;
 export const resolvedNetwork = RESOLVED_NETWORK;
 
 /**
+ * Readiness probe for the deep /health check (D3) — pings the facilitator's
+ * own /health endpoint with a short timeout. Never throws: an unreachable
+ * facilitator is a "not ready" signal, not a server crash. Only meaningful
+ * when payments are configured; callers should skip it otherwise.
+ */
+export async function checkFacilitatorHealth(timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${FACILITATOR_URL}/health`, { signal: controller.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * @returns {import('express').RequestHandler | null} the payment middleware,
  * or null if PAY_TO isn't configured yet.
  */

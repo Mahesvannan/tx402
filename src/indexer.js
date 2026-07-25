@@ -72,6 +72,24 @@ async function getJson(url) {
 }
 
 /**
+ * Readiness probe for the deep /health check (D3) — pings the indexer's own
+ * /health endpoint with a short timeout. Never throws: an unreachable
+ * indexer is a "not ready" signal, not a server crash.
+ */
+export async function checkIndexerHealth(network, timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${indexerUrl(network)}/health`, { signal: controller.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Fetch a single transaction by ID.
  * Returns the raw `transaction` object from the indexer.
  */

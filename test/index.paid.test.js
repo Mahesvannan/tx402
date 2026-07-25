@@ -105,6 +105,14 @@ await test('a well-formed txid correctly reaches the payment gate (402)', async 
   assert.ok(res.headers.get('payment-required'), 'PAYMENT-REQUIRED header should be present');
 });
 
+await test('/health?deep=1 checks the facilitator too when payments are configured (D3)', async () => {
+  const res = await fetch(`${baseUrl}/health?deep=1`);
+  const body = await res.json();
+  assert.ok(res.status === 200 || res.status === 503, 'deep health must be 200 or 503, never a crash');
+  assert.strictEqual(typeof body.checks.indexer, 'boolean');
+  assert.strictEqual(typeof body.checks.facilitator, 'boolean');
+});
+
 await test('/discovery reports priced:true in paid mode', async () => {
   const res = await fetch(`${baseUrl}/discovery`);
   const body = await res.json();

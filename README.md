@@ -60,6 +60,8 @@ curl "http://localhost:4021/explain?txid=SOME_REAL_MAINNET_TXID"
 | `test/payments.test.js` | Regression tests for the startup config guards in `payments.js` (H1, M3, R5). |
 | `test/index.test.js` | Live HTTP integration tests (free mode) — rate-limit bypass (R2), stack-trace leak (R3). |
 | `test/index.paid.test.js` | Live HTTP integration tests (paid mode) — validation-before-payment ordering, touches the live facilitator. |
+| `Dockerfile` | Container build for a persistent-process deploy (Railway / Fly / Render / any Docker host). |
+| `Procfile` | `web: node src/index.js` — for Procfile-based hosts (Railway, Render, Heroku-style buildpacks). |
 
 `decoder.js` and `narrator.js` are pure and synchronous on purpose: same input,
 same output, zero marginal cost, nothing to rate-limit. "No model in the
@@ -69,7 +71,7 @@ serving path" is a selling point to agent operators.
 
 - [x] **Phase 1** — core explainer, free and local
 - [x] **Phase 2** — x402 payment middleware on Testnet ([demo repo](https://github.com/algorandfoundation/x402-demo)). Code is wired in and verified live against the hosted facilitator (returns a correct HTTP 402 with signed payment requirements). Still needs a **real funded Testnet `PAY_TO` address** in `.env` and one end-to-end paid call from an actual x402 client before this phase is truly done.
-- [ ] **Phase 3** — deploy to a public HTTPS host (Vercel / Railway free tier)
+- [ ] **Phase 3** — deploy to a public HTTPS host that runs a persistent process (Railway / Fly / Render / Docker — **not** Vercel serverless, see "Deploying" below)
 - [ ] **Phase 4** — flip config to Mainnet, register Bazaar discovery extension, add `tag: x402-global-challenge`
 - [ ] **Phase 5** — first real Mainnet settlement; confirm it appears on the leaderboard
 - [ ] **Phase 6** — example client, OpenAPI spec, optional MCP wrapper
@@ -101,18 +103,61 @@ To pay for a call yourself, use an x402-aware client (see the
 
 ## Deploying (Phase 3)
 
-If you put tx402 behind a reverse proxy (Vercel, Railway, Fly, a load balancer,
-etc.), set **`TRUST_PROXY=1`** in that host's environment. Without it, every
-request appears to come from the proxy's single IP, and per-IP rate limiting
-(see Security notes below) collapses to one shared bucket for all your
-callers — one abusive client throttles everyone. Only set this once you've
-confirmed the proxy actually overwrites inbound `X-Forwarded-For` rather than
-passing through whatever a client sends; otherwise a client can spoof the
-header and bypass rate limiting entirely.
+**Deploy to a host that runs a persistent process** — Railway, Fly, Render, or
+any Docker host (a `Dockerfile` and `Procfile` are included). **Do not deploy
+this to Vercel (or other FaaS/serverless) as-is.** The app is built around a
+single long-lived process: `src/rateLimit.js` keeps rate-limit state in an
+in-memory `Map`, and the graceful-shutdown handler below assumes a listening
+server the platform signals on redeploy. On serverless, each invocation is a
+fresh short-lived process — the rate limiter's `Map` never accumulates state
+across calls, so per-IP limiting (the *only* abuse protection in free/unpaid
+mode) silently becomes a no-op, and `app.listen()` doesn't fit the serverless
+handler model to begin with. If you genuinely need serverless, you'd need a
+handler adapter *and* a shared-store limiter (Redis/Upstash) instead of the
+in-memory one — that's a real rework, not a config flag.
+
+If you put tx402 behind a reverse proxy (Railway, Fly, a load balancer, etc.),
+set **`TRUST_PROXY=1`** in that host's environment. Without it, every request
+appears to come from the proxy's single IP, and per-IP rate limiting (see
+Security notes below) collapses to one shared bucket for all your callers —
+one abusive client throttles everyone. Only set this once you've confirmed
+the proxy actually overwrites inbound `X-Forwarded-For` rather than passing
+through whatever a client sends; otherwise a client can spoof the header and
+bypass rate limiting entirely.
 
 The server handles `SIGTERM`/`SIGINT` by draining in-flight requests before
 exiting, so redeploys and restarts on hosts that send those signals (Docker,
-Railway, Fly, etc.) don't cut off active calls mid-response.
+Railway, Fly, etc.) don't cut off active calls mid-response. Verified against
+a real `docker stop` (a genuine SIGTERM, not just a killed process): the
+server logs `SIGTERM received, closing server...` / `Server closed.` and
+exits `0`.
+
+**Scaling past one instance:** the rate limiter is per-process (see
+`src/rateLimit.js`'s own header comment). Two instances behind a load
+balancer means two independent buckets — the effective limit becomes
+`instances × max`, and a free tier that scales to zero resets the window on
+every cold start. Fine for the single-instance shape this project targets;
+if you run more than one instance, swap in a shared-store limiter (Redis)
+first.
+
+**Monitoring:** `/explain` has two external runtime dependencies with no
+retry/fallback — the AlgoNode public indexer and (in paid mode) the
+GoPlausible facilitator. Plain `/health` only reports that the process is
+alive (a liveness check), not that these are reachable. For a real readiness
+signal, use **`/health?deep=1`**, which pings both with a short timeout and
+returns `503` if either is down:
+
+```bash
+curl "http://localhost:4021/health?deep=1"
+# {"ok":true,"service":"tx402","version":"0.1.0","checks":{"indexer":true,"facilitator":true}}
+```
+
+Point your uptime monitor / load-balancer readiness probe at the deep
+variant, not the plain one, if you want early warning instead of finding out
+from a wave of failed `/explain` calls. If the public AlgoNode indexer ever
+becomes a bottleneck under real traffic, swap in a paid provider via
+`MAINNET_INDEXER_URL` / `TESTNET_INDEXER_URL` (see Notes below) — no other
+code changes needed.
 
 ## Security notes
 

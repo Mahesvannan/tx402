@@ -11,10 +11,16 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
-import { fetchTransaction, fetchAsset, HttpError } from './indexer.js';
+import { fetchTransaction, fetchAsset, checkIndexerHealth, HttpError } from './indexer.js';
 import { decodeTransaction } from './decoder.js';
 import { narrate } from './narrator.js';
-import { buildPaymentGate, paymentsConfigured, explainPrice, resolvedNetwork } from './payments.js';
+import {
+  buildPaymentGate,
+  paymentsConfigured,
+  explainPrice,
+  resolvedNetwork,
+  checkFacilitatorHealth,
+} from './payments.js';
 import { rateLimit } from './rateLimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -113,9 +119,37 @@ if (paymentGate) {
   );
 }
 
-/** Free forever: lets agents check liveness without paying. */
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'tx402', version: APP_VERSION });
+/**
+ * Free forever: lets agents/load-balancers check liveness without paying.
+ *
+ * Plain `/health` is a LIVENESS check only — it answers "is the process up",
+ * not "can it actually serve /explain" (D3). `?deep=1` adds a READINESS
+ * check: a short-timeout ping of the two external services /explain depends
+ * on (the Algorand indexer, and — only when payments are configured — the
+ * x402 facilitator). Kept opt-in and off the default path so routine
+ * load-balancer polling stays fast and never itself hammers those services.
+ */
+app.get('/health', async (req, res) => {
+  if (req.query.deep !== '1') {
+    return res.json({ ok: true, service: 'tx402', version: APP_VERSION });
+  }
+
+  const network = (getQueryString(req, 'network') || 'mainnet').trim();
+  const [indexerOk, facilitatorOk] = await Promise.all([
+    checkIndexerHealth(network),
+    paymentsConfigured ? checkFacilitatorHealth() : Promise.resolve(true),
+  ]);
+  const ok = indexerOk && facilitatorOk;
+
+  res.status(ok ? 200 : 503).json({
+    ok,
+    service: 'tx402',
+    version: APP_VERSION,
+    checks: {
+      indexer: indexerOk,
+      facilitator: paymentsConfigured ? facilitatorOk : 'not configured',
+    },
+  });
 });
 
 /**
