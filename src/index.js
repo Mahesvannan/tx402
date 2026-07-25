@@ -133,15 +133,31 @@ async function getDeepHealth(network) {
   const inFlight = deepHealthInFlight.get(network);
   if (inFlight) return inFlight;
 
+  // This promise must NEVER reject, and must ALWAYS clear its in-flight slot.
+  // checkIndexerHealth/checkFacilitatorHealth are contractually non-throwing,
+  // but relying on that would make the whole route fragile: a future edit that
+  // let either throw would (a) leave a rejected promise stuck in the in-flight
+  // map forever — poisoning every later check for this network — and (b) reach
+  // the route's un-try/caught `await`, which Express 4 does not rescue, hanging
+  // the request. try/catch → safe default, finally → guaranteed cleanup makes
+  // that structurally impossible regardless of what the check functions do.
   const promise = (async () => {
-    const [indexerOk, facilitatorOk] = await Promise.all([
-      checkIndexerHealth(network),
-      paymentsConfigured ? checkFacilitatorHealth() : Promise.resolve(true),
-    ]);
-    const result = { indexerOk, facilitatorOk };
-    deepHealthCache.set(network, { result, expiresAt: Date.now() + DEEP_HEALTH_TTL_MS });
-    deepHealthInFlight.delete(network);
-    return result;
+    try {
+      const [indexerOk, facilitatorOk] = await Promise.all([
+        checkIndexerHealth(network),
+        paymentsConfigured ? checkFacilitatorHealth() : Promise.resolve(true),
+      ]);
+      const result = { indexerOk, facilitatorOk };
+      // Only cache a result we actually computed — never cache a failure.
+      deepHealthCache.set(network, { result, expiresAt: Date.now() + DEEP_HEALTH_TTL_MS });
+      return result;
+    } catch {
+      // A check unexpectedly threw: report not-ready this once (uncached, so the
+      // next request retries) rather than rejecting and hanging the handler.
+      return { indexerOk: false, facilitatorOk: false };
+    } finally {
+      deepHealthInFlight.delete(network);
+    }
   })();
   deepHealthInFlight.set(network, promise);
   return promise;
