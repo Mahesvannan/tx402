@@ -6,6 +6,9 @@
  * activates once PAY_TO is set in the environment — see src/payments.js.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
 import { fetchTransaction, fetchAsset, HttpError } from './indexer.js';
@@ -13,6 +16,11 @@ import { decodeTransaction } from './decoder.js';
 import { narrate } from './narrator.js';
 import { buildPaymentGate, paymentsConfigured, explainPrice, resolvedNetwork } from './payments.js';
 import { rateLimit } from './rateLimit.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const { version: APP_VERSION } = JSON.parse(
+  readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
+);
 
 const app = express();
 const PORT = process.env.PORT || 4021;
@@ -30,6 +38,18 @@ if (process.env.TRUST_PROXY === '1') {
 
 app.use(helmet());
 app.use(express.json({ limit: '8kb' }));
+
+// Minimal access log — method, path, status, latency, client IP. Enough for
+// production debugging and abuse investigation without pulling in a full
+// logging framework for a service this size. Runs first so every request
+// is logged, including ones later rejected by validation or rate limiting.
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms ${req.ip}`);
+  });
+  next();
+});
 
 // A valid Algorand transaction ID is exactly 52 base32 characters.
 const TXID_PATTERN = /^[A-Z2-7]{52}$/;
@@ -95,7 +115,7 @@ if (paymentGate) {
 
 /** Free forever: lets agents check liveness without paying. */
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'tx402', version: '0.1.0' });
+  res.json({ ok: true, service: 'tx402', version: APP_VERSION });
 });
 
 /**
@@ -173,7 +193,38 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error.' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`tx402 listening on http://localhost:${PORT}`);
   console.log(`  try: http://localhost:${PORT}/explain?txid=YOUR_TXID`);
 });
+
+// Production hosts (Docker, Railway, Fly, etc.) send SIGTERM on deploy or
+// restart and expect the process to stop accepting new connections and
+// drain in-flight requests before exiting, rather than being killed
+// mid-request. server.close() does exactly that — it stops the listener
+// but lets active requests finish.
+function shutdown(signal) {
+  console.log(`${signal} received, closing server...`);
+  server.close((err) => {
+    if (err) {
+      console.error('Error while closing server:', err);
+      process.exit(1);
+    }
+    console.log('Server closed.');
+    process.exit(0);
+  });
+  // Force-exit if something (a stuck connection, a hung request) prevents
+  // close() from ever calling back, so a deploy can't hang indefinitely.
+  setTimeout(() => {
+    console.error('Graceful shutdown timed out after 10s, forcing exit.');
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Exported for tests — lets a test suite import the wired-up app, drive
+// real requests against `server`'s address, and close it deterministically
+// afterward, instead of every test spawning its own `npm start` process.
+export { app, server };

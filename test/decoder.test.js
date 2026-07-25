@@ -161,7 +161,12 @@ test('flags grouped transactions in the narrative', () => {
   const d = decodeTransaction(applFixture);
   const s = narrate(d);
   console.log(`        -> ${s}`);
-  assert.ok(s.includes('Tinyman'));
+  // knownApps.js marks this entry verified:false, so the narrative must NOT
+  // state "Tinyman" as fact (P1) even though decodeTransaction resolved the
+  // name structurally above -- narration only names a protocol once it's
+  // been confirmed against a block explorer and flipped to verified:true.
+  assert.ok(s.includes('smart contract 1002541853'));
+  assert.ok(!s.includes('Tinyman'));
   assert.ok(s.includes('grouped transaction'));
 });
 

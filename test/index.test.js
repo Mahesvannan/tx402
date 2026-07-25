@@ -1,0 +1,179 @@
+/**
+ * HTTP integration tests for src/index.js in FREE mode — the
+ * request-handling layer itself, not just the pure decoder/narrator
+ * functions.
+ *
+ * These exist specifically because H2 (rate limiting), R2 (rate-limit
+ * bypass via X-Forwarded-For), and R3 (crash + stack-trace leak on
+ * malformed input) were all found by making real HTTP requests against a
+ * running server — none of them were visible from the pure-function unit
+ * tests. This suite makes those same requests so a future refactor can't
+ * silently reintroduce any of them.
+ *
+ * Paid-mode HTTP behavior (the payment-gate-ordering bonus bug) is covered
+ * separately in test/index.paid.test.js, in its own process: src/index.js
+ * imports src/payments.js via a plain (non-cache-busted) specifier, so once
+ * payments.js has evaluated once with a given env inside a process, Node's
+ * module cache pins that config for every later re-import of index.js in
+ * that same process -- fine in production (index.js is only ever imported
+ * once), but it means free-mode and paid-mode server instances can't both
+ * be exercised via repeated dynamic import() within a single test process.
+ *
+ * Each test group imports src/index.js fresh (unique cache-busting query
+ * string + a dedicated port) with a controlled env, the same pattern used
+ * in payments.test.js, so these tests are independent of whatever is in a
+ * developer's local .env and don't collide with a real `npm start`.
+ */
+
+import assert from 'node:assert';
+
+let passed = 0;
+let failed = 0;
+
+async function test(name, fn) {
+  try {
+    await fn();
+    console.log(`  PASS  ${name}`);
+    passed++;
+  } catch (err) {
+    console.log(`  FAIL  ${name}`);
+    console.log(`        ${err.message}`);
+    failed++;
+  }
+}
+
+const MANAGED_KEYS = [
+  'PORT',
+  'NETWORK',
+  'USDC_ASSET_ID',
+  'PAY_TO',
+  'FACILITATOR_URL',
+  'EXPLAIN_PRICE_USD',
+  'TRUST_PROXY',
+];
+
+let nextPort = 4500; // distinct from the real dev port (4021) and from each other per group
+
+async function waitForServer(baseUrl, retries = 30) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(`${baseUrl}/health`);
+      if (res.ok) return;
+    } catch {
+      // not listening yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`server at ${baseUrl} never became ready`);
+}
+
+async function startServer(envVars) {
+  const saved = {};
+  for (const k of MANAGED_KEYS) saved[k] = process.env[k];
+  for (const k of MANAGED_KEYS) process.env[k] = envVars[k] ?? '';
+
+  const port = nextPort++;
+  process.env.PORT = String(port); // overrides the '' set above on purpose
+
+  const mod = await import(`../src/index.js?test=${Date.now()}-${Math.random()}`);
+
+  for (const k of MANAGED_KEYS) {
+    if (saved[k] === undefined) delete process.env[k];
+    else process.env[k] = saved[k];
+  }
+
+  const baseUrl = `http://127.0.0.1:${port}`;
+  await waitForServer(baseUrl);
+  return { ...mod, baseUrl };
+}
+
+function closeServer(server) {
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+const WELL_FORMED_TXID = 'Z'.repeat(52); // valid FORMAT, never a real transaction
+
+// ---------------------------------------------------------------------------
+
+console.log('\nindex.js (free mode) — basic endpoints & hardening');
+{
+  const { server, baseUrl } = await startServer({});
+
+  await test('/health returns 200 with the package.json version (P6)', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    const body = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.ok, true);
+    assert.ok(body.version, 'version should be present');
+  });
+
+  await test('/discovery reports priced:false in free mode', async () => {
+    const res = await fetch(`${baseUrl}/discovery`);
+    const body = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.routes[0].priced, false);
+    assert.strictEqual(body.routes[0].price, null);
+  });
+
+  await test('helmet security headers are present (L7)', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    assert.ok(res.headers.get('x-content-type-options'), 'X-Content-Type-Options missing');
+    assert.ok(res.headers.get('content-security-policy'), 'Content-Security-Policy missing');
+  });
+
+  await test('missing txid returns 400', async () => {
+    const res = await fetch(`${baseUrl}/explain`);
+    assert.strictEqual(res.status, 400);
+  });
+
+  await test('malformed (array) txid returns a clean 400, not a stack-trace 500 (R3)', async () => {
+    const res = await fetch(`${baseUrl}/explain?txid=AAAA&txid=BBBB`);
+    const text = await res.text();
+    assert.strictEqual(res.status, 400);
+    assert.ok(!text.includes('at file://'), 'response must not leak a stack trace');
+    assert.ok(!text.includes('node_modules'), 'response must not leak filesystem paths');
+  });
+
+  await test('malformed (object) txid returns a clean 400, not a stack-trace 500 (R3)', async () => {
+    const res = await fetch(`${baseUrl}/explain?txid[x]=y`);
+    const text = await res.text();
+    assert.strictEqual(res.status, 400);
+    assert.ok(!text.includes('at file://'), 'response must not leak a stack trace');
+  });
+
+  await test('too-short txid returns 400', async () => {
+    const res = await fetch(`${baseUrl}/explain?txid=ABC`);
+    assert.strictEqual(res.status, 400);
+  });
+
+  await closeServer(server);
+}
+
+// ---------------------------------------------------------------------------
+
+console.log('\nindex.js (free mode) — rate limiting (H2) and X-Forwarded-For bypass (R2 regression)');
+{
+  // Fresh server = fresh rate-limiter state, TRUST_PROXY left unset.
+  const { server, baseUrl } = await startServer({});
+
+  await test('spoofed X-Forwarded-For does not bypass the per-IP limit', async () => {
+    const statuses = [];
+    for (let i = 0; i < 12; i++) {
+      const res = await fetch(`${baseUrl}/explain?txid=${WELL_FORMED_TXID}`, {
+        headers: { 'X-Forwarded-For': `10.0.0.${i}` }, // a different claimed IP every request
+      });
+      statuses.push(res.status);
+    }
+    const rateLimited = statuses.filter((s) => s === 429).length;
+    assert.ok(
+      rateLimited > 0,
+      `expected at least one 429 among ${JSON.stringify(statuses)} — ` +
+        'if none appear, spoofing bypassed the limit (R2 regressed)'
+    );
+  });
+
+  await closeServer(server);
+}
+
+console.log(`\n${passed} passed, ${failed} failed\n`);
+process.exit(failed > 0 ? 1 : 0);

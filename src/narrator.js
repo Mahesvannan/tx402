@@ -70,7 +70,12 @@ export function narrate(tx) {
       if (a.isCreate) {
         return `${prefix}wallet ${from} deployed a new smart contract. Paid ${fee}.`;
       }
-      const target = a.protocol
+      // Only ever name a protocol when knownApps.js has it flagged verified —
+      // an unverified/placeholder mapping must never be stated as fact. This
+      // check lives here (not just in the data) so the safety is structural:
+      // forgetting to flip a flag degrades to an honest "smart contract N",
+      // never a wrong name presented as truth.
+      const target = a.protocol && a.protocolVerified
         ? `${a.protocol} (app ${a.appId})`
         : `smart contract ${a.appId}`;
       const action = describeOnCompletion(a.onCompletion);

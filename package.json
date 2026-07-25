@@ -1,13 +1,14 @@
 {
   "name": "tx402",
   "version": "0.1.0",
+  "private": true,
   "description": "Plain-English explanations of Algorand transactions, as a pay-per-call API.",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node test/decoder.test.js"
+    "test": "node test/decoder.test.js && node test/rateLimit.test.js && node test/payments.test.js && node test/index.test.js && node test/index.paid.test.js"
   },
   "engines": {
     "node": ">=20"

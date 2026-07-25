@@ -24,7 +24,7 @@ import {
   isValidAlgorandAddress,
 } from '@x402/avm';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const FACILITATOR_URL = process.env.FACILITATOR_URL || 'https://facilitator.goplausible.xyz';
 const NETWORK = process.env.NETWORK || ALGORAND_TESTNET_CAIP2;
