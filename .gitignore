@@ -12,3 +12,6 @@ dist/
 .testnet-buyer-wallet.local.json
 .claude/settings.local.json
 .remember/
+
+# Internal running review/audit log — local reference only, never pushed
+Review.md
