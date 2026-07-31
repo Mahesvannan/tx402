@@ -8,7 +8,9 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node test/decoder.test.js && node test/rateLimit.test.js && node test/payments.test.js && node test/index.test.js && node test/index.paid.test.js"
+    "test": "node test/decoder.test.js && node test/rateLimit.test.js && node test/payments.test.js && node test/index.test.js && node test/index.paid.test.js",
+    "smoke": "node scripts/smoke-phase3.mjs",
+    "smoke:paid": "node scripts/pay-and-explain.mjs"
   },
   "engines": {
     "node": ">=20"

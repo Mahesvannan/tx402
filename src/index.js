@@ -30,6 +30,7 @@ const { version: APP_VERSION } = JSON.parse(
 
 const app = express();
 const PORT = process.env.PORT || 4021;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Trusting X-Forwarded-For is only safe when a proxy you control is
 // guaranteed to overwrite whatever a client sends — otherwise a client can
@@ -293,8 +294,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error.' });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`tx402 listening on http://localhost:${PORT}`);
+const server = app.listen(PORT, HOST, () => {
+  console.log(`tx402 listening on http://${HOST}:${PORT}`);
   console.log(`  try: http://localhost:${PORT}/explain?txid=YOUR_TXID`);
 });
 
