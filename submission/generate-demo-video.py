@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import shutil
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -11,8 +14,14 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "submission" / "out"
 FRAMES = OUT / "frames"
+AUDIO = OUT / "audio"
+PYDEPS = OUT / "pydeps"
 FINAL = OUT / "tx402-demo-video.mp4"
 FFMPEG = ROOT / "node_modules" / "ffmpeg-static" / "ffmpeg.exe"
+VOICE = "en-US-AndrewNeural"
+
+if PYDEPS.exists():
+    sys.path.insert(0, str(PYDEPS))
 
 WIDTH = 1920
 HEIGHT = 1080
@@ -342,14 +351,63 @@ def slide_8() -> Image.Image:
 
 
 slides = [
-    ("01-title", slide_1, 20),
-    ("02-problem", slide_2, 25),
-    ("03-solution", slide_3, 28),
-    ("04-live-checks", slide_4, 30),
-    ("05-payment-challenge", slide_5, 32),
-    ("06-integrations", slide_6, 26),
-    ("07-settlement", slide_7, 30),
-    ("08-summary", slide_8, 24),
+    (
+        "01-title",
+        slide_1,
+        24,
+        "Hi, this is tx402: a live Algorand API that turns transaction IDs into plain-English explanations. "
+        "The endpoint is paid per call using x402, with Mainnet USDC settlement.",
+    ),
+    (
+        "02-problem",
+        slide_2,
+        31,
+        "The problem is that raw Algorand transaction data is accurate, but not explanation-ready. "
+        "Amounts are stored in base units, assets and applications are numeric IDs, and notes may need decoding. "
+        "Agents should not rebuild this translation layer every time.",
+    ),
+    (
+        "03-solution",
+        slide_3,
+        31,
+        "tx402 solves this by accepting one transaction ID and returning one clear sentence plus structured JSON. "
+        "The result is deterministic, fast, and useful for wallets, explorers, portfolio tools, and AI agents.",
+    ),
+    (
+        "04-live-checks",
+        slide_4,
+        34,
+        "Here is the live production check. Health passes, deep health passes, discovery reports that the API is priced, "
+        "and an unpaid explain request correctly returns HTTP 402 instead of giving away the resource.",
+    ),
+    (
+        "05-payment-challenge",
+        slide_5,
+        37,
+        "The example client is safe by default. It does not spend funds. It calls the live service, reads discovery, "
+        "and prints the x402 payment challenge: exact scheme, Algorand network, USDC asset ID, amount, and receiver address.",
+    ),
+    (
+        "06-integrations",
+        slide_6,
+        30,
+        "For integration, Phase 6 ships three developer surfaces: an OpenAPI specification, a Node client example, "
+        "and an MCP wrapper for agent workflows. Paid mode is explicit and opt-in.",
+    ),
+    (
+        "07-settlement",
+        slide_7,
+        34,
+        "This is not only a mockup. tx402 has completed a real x402 settlement on Algorand Mainnet. "
+        "The buyer paid zero point zero zero five USDC, and the receiver balance increased by exactly that amount.",
+    ),
+    (
+        "08-summary",
+        slide_8,
+        28,
+        "In summary, tx402 demonstrates x402 as a practical payment layer for agent-accessible APIs on Algorand. "
+        "It is live, documented, integrated, and ready to submit.",
+    ),
 ]
 
 
@@ -357,7 +415,22 @@ def run_ffmpeg(args: list[str]) -> None:
     subprocess.run([str(FFMPEG), "-hide_banner", "-loglevel", "error", *args], check=True)
 
 
-def make_segment(index: int, name: str, image: Image.Image, duration: int) -> Path:
+async def synthesize_voice(index: int, name: str, narration: str) -> Path:
+    try:
+        import edge_tts
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "edge_tts is required for neural narration. Install it with: "
+            "python -m pip install --target submission\\out\\pydeps edge-tts"
+        ) from exc
+
+    mp3 = AUDIO / f"{index + 1:02d}-{name}.mp3"
+    communicate = edge_tts.Communicate(narration, VOICE, rate="+0%", pitch="-2Hz")
+    await communicate.save(str(mp3))
+    return mp3
+
+
+def make_segment(index: int, name: str, image: Image.Image, audio: Path, duration: int) -> Path:
     png = FRAMES / f"{index + 1:02d}-{name}.png"
     mp4 = FRAMES / f"{index + 1:02d}-{name}.mp4"
     image.save(png)
@@ -368,10 +441,8 @@ def make_segment(index: int, name: str, image: Image.Image, duration: int) -> Pa
             "1",
             "-i",
             str(png),
-            "-f",
-            "lavfi",
             "-i",
-            "anullsrc=channel_layout=stereo:sample_rate=44100",
+            str(audio),
             "-t",
             str(duration),
             "-vf",
@@ -382,9 +453,10 @@ def make_segment(index: int, name: str, image: Image.Image, duration: int) -> Pa
             "veryfast",
             "-c:a",
             "aac",
+            "-af",
+            "apad",
             "-b:a",
-            "96k",
-            "-shortest",
+            "160k",
             str(mp4),
         ]
     )
@@ -395,8 +467,14 @@ def main() -> None:
     if not FFMPEG.exists():
         raise SystemExit(f"ffmpeg binary not found: {FFMPEG}")
 
+    shutil.rmtree(FRAMES, ignore_errors=True)
+    shutil.rmtree(AUDIO, ignore_errors=True)
     FRAMES.mkdir(parents=True, exist_ok=True)
-    segments = [make_segment(i, name, factory(), duration) for i, (name, factory, duration) in enumerate(slides)]
+    AUDIO.mkdir(parents=True, exist_ok=True)
+    segments = []
+    for i, (name, factory, duration, narration) in enumerate(slides):
+        audio = asyncio.run(synthesize_voice(i, name, narration))
+        segments.append(make_segment(i, name, factory(), audio, duration))
 
     concat = OUT / "concat.txt"
     concat.write_text("\n".join(f"file '{segment.as_posix()}'" for segment in segments), encoding="utf-8")
@@ -412,7 +490,8 @@ def main() -> None:
     metadata = {
         "video": str(FINAL),
         "slides": len(slides),
-        "duration_target_seconds": sum(duration for _, _, duration in slides),
+        "voice": VOICE,
+        "duration_target_seconds": sum(duration for _, _, duration, _ in slides),
         "bytes": FINAL.stat().st_size,
         "ffmpeg_probe": "\n".join(probe.stderr.splitlines()[:12]),
     }
