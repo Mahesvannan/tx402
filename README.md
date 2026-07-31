@@ -55,7 +55,7 @@ in [`CLAUDE.md`](./CLAUDE.md).
 - [x] Phase 2 - x402 payment middleware on Testnet, verified end-to-end
 - [x] Phase 3 - deploy to a public HTTPS host (persistent-process only - see `CLAUDE.md`)
 - [x] Phase 4 - flip config to Mainnet
-- [ ] Phase 5 - first real Mainnet settlement
+- [x] Phase 5 - first real Mainnet settlement
 - [ ] Phase 6 - example client, OpenAPI spec, optional MCP wrapper
 
 ## Deploying (Phase 3)
@@ -138,6 +138,11 @@ To make the first real Mainnet payment:
 ```bash
 TX402_URL=https://tx402-production.up.railway.app CONFIRM_MAINNET_PAYMENT=1 npm run phase5:settle
 ```
+
+First Mainnet settlement:
+
+- txid: `XA7HMRPUV4X2GWI4AAGUT5FKAVTNCQJ5ZMUNTVTBKG3GZMES27LA`
+- amount: `0.005000` USDC
 
 ## Learn more
 
