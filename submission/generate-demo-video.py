@@ -10,27 +10,31 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "submission" / "out"
-SLIDES = OUT / "slides"
-AUDIO = OUT / "audio"
-VIDEO = OUT / "video"
+FRAMES = OUT / "frames"
 FINAL = OUT / "tx402-demo-video.mp4"
 FFMPEG = ROOT / "node_modules" / "ffmpeg-static" / "ffmpeg.exe"
 
-
 WIDTH = 1920
 HEIGHT = 1080
-BG = (9, 14, 27)
-PANEL = (17, 24, 39)
-ACCENT = (44, 212, 191)
+
+BG = (4, 8, 18)
+CARD = (15, 23, 42)
+CARD_2 = (22, 33, 58)
+ACCENT = (45, 212, 191)
+GREEN = (34, 197, 94)
+YELLOW = (250, 204, 21)
+RED = (248, 113, 113)
 TEXT = (241, 245, 249)
 MUTED = (148, 163, 184)
+DIM = (71, 85, 105)
 CODE_BG = (2, 6, 23)
 
 
 def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     candidates = [
-        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/consolab.ttf" if bold else "C:/Windows/Fonts/consola.ttf",
         "C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
     ]
     for candidate in candidates:
         path = Path(candidate)
@@ -39,124 +43,23 @@ def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-TITLE = font(76, True)
-SUBTITLE = font(40, False)
-BODY = font(34, False)
-BODY_BOLD = font(34, True)
-SMALL = font(25, False)
-CODE = font(28, False)
+F_TITLE = font(76, True)
+F_H1 = font(56, True)
+F_H2 = font(38, True)
+F_BODY = font(31)
+F_BODY_BOLD = font(31, True)
+F_SMALL = font(24)
+F_CODE = font(26)
+F_CODE_SMALL = font(22)
+F_CAPTION = font(30, True)
 
 
-slides = [
-    {
-        "title": "tx402",
-        "duration": 35,
-        "subtitle": "Plain-English Algorand transaction explanations, paid per call by AI agents using x402.",
-        "bullets": [
-            "Live API: https://tx402-production.up.railway.app",
-            "GitHub: github.com/Mahesvannan/tx402",
-            "Mainnet x402 payments in USDC",
-        ],
-        "callout": "Give it a txid. Pay with x402. Get a readable explanation.",
-        "narration": (
-            "Hi, this is tx402. It turns cryptic Algorand transaction data into plain-English explanations, "
-            "and the API is paid per call using x402 on Algorand. The service is live on Railway, has a public "
-            "GitHub repository, and is configured for Mainnet USDC payments."
-        ),
-    },
-    {
-        "title": "The problem",
-        "duration": 40,
-        "subtitle": "Raw transaction data is correct, but hard to explain to people.",
-        "bullets": [
-            "Amounts arrive in base units, not readable decimals.",
-            "Assets and applications are numeric IDs.",
-            "Notes, fees, groups, and counterparties need decoding.",
-            "Every agent should not rebuild the same chain-decoding layer.",
-        ],
-        "callout": "Agents need a small, reliable translation layer.",
-        "narration": (
-            "Algorand transaction data is optimized for precise machine processing. But when an AI agent, wallet, "
-            "portfolio tracker, or compliance workflow needs to answer a human, the raw fields are not enough. "
-            "Amounts need scaling, asset IDs need labels, notes need decoding, and app calls need context."
-        ),
-    },
-    {
-        "title": "The solution",
-        "duration": 38,
-        "subtitle": "A deterministic transaction explainer API.",
-        "bullets": [
-            "Input: one Algorand transaction ID.",
-            "Output: one clear sentence plus structured JSON.",
-            "Handles ALGO, ASA transfers, opt-ins, fees, timestamps, and notes.",
-            "No LLM required in the serving path.",
-        ],
-        "callout": "Example: Wallet ABC sent 12.30 USDC to wallet XYZ.",
-        "narration": (
-            "tx402 accepts a transaction ID and returns a concise explanation plus structured fields. "
-            "It normalizes amounts, identifies assets, decodes notes, and reports fees and counterparties. "
-            "The output is deterministic, fast, and safe to call from other applications."
-        ),
-    },
-    {
-        "title": "How x402 fits",
-        "duration": 42,
-        "subtitle": "The explanation endpoint is monetized with x402 on Algorand.",
-        "bullets": [
-            "Agent calls GET /explain?txid=...",
-            "API returns an HTTP 402 payment challenge.",
-            "Buyer signs an Algorand USDC payment client-side.",
-            "Facilitator verifies and settles.",
-            "API returns the explanation after payment.",
-        ],
-        "callout": "Current price: $0.005 USDC per explanation.",
-        "narration": (
-            "The paid endpoint uses x402. An unpaid call receives a standard HTTP 402 challenge. "
-            "The buyer signs a USDC payment on Algorand, the facilitator verifies and settles it, "
-            "and the API returns the transaction explanation. The current price is half a cent per call."
-        ),
-    },
-    {
-        "title": "Live product",
-        "duration": 38,
-        "subtitle": "Production endpoints and developer integrations are ready.",
-        "bullets": [
-            "/health checks service liveness.",
-            "/discovery exposes route pricing metadata.",
-            "/openapi.json exposes an OpenAPI 3.1 spec.",
-            "/explain returns paid transaction explanations.",
-            "Includes Node client example and MCP stdio wrapper.",
-        ],
-        "callout": "Read-only client demo prints the payment challenge safely.",
-        "narration": (
-            "The production API exposes health, discovery, OpenAPI, and explain routes. "
-            "For developers and agents, the repo includes a Node client example and an MCP stdio wrapper. "
-            "Both are read-only by default, so they can inspect the payment challenge without spending funds."
-        ),
-    },
-    {
-        "title": "Proof and next steps",
-        "duration": 37,
-        "subtitle": "tx402 is deployed and has completed a real Mainnet settlement.",
-        "bullets": [
-            "Public HTTPS deployment on Railway.",
-            "Algorand Mainnet USDC x402 configuration.",
-            "First real Mainnet settlement: 0.005000 USDC.",
-            "Settlement TxID: XA7HMRPUV4X2GWI4AAGUT5FKAVTNCQJ5ZMUNTVTBKG3GZMES27LA",
-        ],
-        "callout": "Next: broader transaction coverage and verified protocol labels.",
-        "narration": (
-            "tx402 is live, deployed over HTTPS, and has completed a real Mainnet settlement for 0.005 USDC. "
-            "The next steps are expanding transaction coverage, adding more verified protocol labels, "
-            "and packaging tx402 for wider agent marketplace distribution."
-        ),
-    },
-]
-
-
-def wrap_text(draw: ImageDraw.ImageDraw, text: str, fnt: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+def wrap(draw: ImageDraw.ImageDraw, text: str, fnt: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
     lines: list[str] = []
     for paragraph in text.split("\n"):
+        if paragraph == "":
+            lines.append("")
+            continue
         words = paragraph.split()
         current = ""
         for word in words:
@@ -172,133 +75,344 @@ def wrap_text(draw: ImageDraw.ImageDraw, text: str, fnt: ImageFont.FreeTypeFont,
     return lines
 
 
-def draw_wrapped(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, fnt, fill, max_width: int, spacing: int) -> int:
+def text(draw, xy, value, fnt, fill=TEXT, max_width=None, line_gap=8) -> int:
     x, y = xy
-    for line in wrap_text(draw, text, fnt, max_width):
+    if max_width is None:
+        draw.text((x, y), value, font=fnt, fill=fill)
+        return y + fnt.size + line_gap
+    for line in wrap(draw, value, fnt, max_width):
         draw.text((x, y), line, font=fnt, fill=fill)
-        y += fnt.size + spacing
+        y += fnt.size + line_gap
     return y
 
 
-def make_slide(index: int, data: dict[str, object]) -> Path:
+def rounded(draw, box, fill, outline=None, width=1, radius=28):
+    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+
+
+def base(title: str, eyebrow: str = "tx402 demo") -> tuple[Image.Image, ImageDraw.ImageDraw]:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
-
-    draw.rounded_rectangle((70, 70, WIDTH - 70, HEIGHT - 70), radius=34, fill=PANEL)
-    draw.rectangle((70, 70, 115, HEIGHT - 70), fill=ACCENT)
-
-    draw.text((150, 125), str(data["title"]), font=TITLE, fill=TEXT)
-    y = draw_wrapped(draw, (150, 225), str(data["subtitle"]), SUBTITLE, MUTED, 1550, 10)
-
-    y += 55
-    for bullet in data["bullets"]:
-        draw.ellipse((155, y + 11, 175, y + 31), fill=ACCENT)
-        y = draw_wrapped(draw, (200, y), str(bullet), BODY, TEXT, 1500, 9)
-        y += 28
-
-    draw.rounded_rectangle((150, 820, WIDTH - 150, 940), radius=22, fill=CODE_BG, outline=ACCENT, width=2)
-    draw_wrapped(draw, (190, 850), str(data["callout"]), BODY_BOLD, TEXT, 1500, 8)
-
-    draw.text((150, 980), "tx402 - x402 payments on Algorand", font=SMALL, fill=MUTED)
-    draw.text((WIDTH - 260, 980), f"{index + 1}/6", font=SMALL, fill=MUTED)
-
-    path = SLIDES / f"slide-{index + 1:02d}.png"
-    img.save(path)
-    return path
+    draw.rectangle((0, 0, WIDTH, 10), fill=ACCENT)
+    text(draw, (90, 60), eyebrow.upper(), F_SMALL, ACCENT)
+    text(draw, (90, 100), title, F_H1, TEXT)
+    draw.text((90, 1015), "Live: https://tx402-production.up.railway.app", font=F_SMALL, fill=MUTED)
+    draw.text((1325, 1015), "github.com/Mahesvannan/tx402", font=F_SMALL, fill=MUTED)
+    return img, draw
 
 
-def make_wav(index: int, text: str) -> Path:
-    out = AUDIO / f"slide-{index + 1:02d}.wav"
-    text_file = AUDIO / f"slide-{index + 1:02d}.txt"
-    text_file.write_text(text, encoding="utf-8")
+def caption(draw, value: str):
+    rounded(draw, (90, 865, 1830, 975), CODE_BG, outline=ACCENT, width=2, radius=20)
+    text(draw, (125, 895), value, F_CAPTION, TEXT, max_width=1660, line_gap=4)
 
-    ps = (
-        "Add-Type -AssemblyName System.Speech; "
-        "$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-        "$speaker.SelectVoice('Microsoft Zira Desktop'); "
-        "$speaker.Rate = -1; "
-        f"$text = Get-Content -Raw -Encoding UTF8 '{text_file}'; "
-        f"$speaker.SetOutputToWaveFile('{out}'); "
-        "$speaker.Speak($text); "
-        "$speaker.Dispose();"
+
+def terminal(draw, box, title: str, lines: list[tuple[str, tuple[int, int, int]]]):
+    x1, y1, x2, y2 = box
+    rounded(draw, box, CODE_BG, outline=DIM, width=2, radius=22)
+    draw.rectangle((x1, y1, x2, y1 + 58), fill=(10, 16, 30))
+    draw.ellipse((x1 + 24, y1 + 22, x1 + 40, y1 + 38), fill=RED)
+    draw.ellipse((x1 + 50, y1 + 22, x1 + 66, y1 + 38), fill=YELLOW)
+    draw.ellipse((x1 + 76, y1 + 22, x1 + 92, y1 + 38), fill=GREEN)
+    draw.text((x1 + 120, y1 + 18), title, font=F_SMALL, fill=MUTED)
+    y = y1 + 85
+    for line, color in lines:
+        for wrapped in textwrap.wrap(line, width=88):
+            draw.text((x1 + 30, y), wrapped, font=F_CODE, fill=color)
+            y += 34
+        y += 4
+
+
+def browser(draw, box, title: str, body_lines: list[str]):
+    x1, y1, x2, y2 = box
+    rounded(draw, box, (248, 250, 252), radius=20)
+    draw.rectangle((x1, y1, x2, y1 + 66), fill=(226, 232, 240))
+    draw.ellipse((x1 + 24, y1 + 25, x1 + 42, y1 + 43), fill=RED)
+    draw.ellipse((x1 + 54, y1 + 25, x1 + 72, y1 + 43), fill=YELLOW)
+    draw.ellipse((x1 + 84, y1 + 25, x1 + 102, y1 + 43), fill=GREEN)
+    rounded(draw, (x1 + 135, y1 + 18, x2 - 30, y1 + 50), (255, 255, 255), radius=12)
+    draw.text((x1 + 155, y1 + 23), title, font=F_SMALL, fill=(30, 41, 59))
+    y = y1 + 95
+    for line in body_lines:
+        draw.text((x1 + 35, y), line, font=F_CODE_SMALL, fill=(15, 23, 42))
+        y += 32
+
+
+def bullets(draw, items: list[str], x: int, y: int, max_width: int = 760) -> int:
+    for item in items:
+        draw.ellipse((x, y + 9, x + 18, y + 27), fill=ACCENT)
+        y = text(draw, (x + 38, y), item, F_BODY, TEXT, max_width=max_width)
+        y += 22
+    return y
+
+
+def slide_1() -> Image.Image:
+    img, draw = base("tx402", "Algorand x402 API")
+    draw.text((90, 210), "Plain-English transaction explanations", font=F_TITLE, fill=TEXT)
+    draw.text((90, 300), "paid per call by AI agents using x402", font=F_TITLE, fill=ACCENT)
+    rounded(draw, (90, 450, 920, 725), CARD, radius=30)
+    rounded(draw, (1000, 450, 1830, 725), CARD, radius=30)
+    bullets(
+        draw,
+        [
+            "Input: one Algorand transaction ID",
+            "Output: one readable sentence + JSON",
+            "No LLM in the serving path",
+        ],
+        140,
+        500,
     )
-    subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True)
-    return out
+    bullets(
+        draw,
+        [
+            "x402 payment challenge on /explain",
+            "Algorand Mainnet USDC settlement",
+            "Current price: $0.005 per call",
+        ],
+        1050,
+        500,
+    )
+    caption(draw, "This demo shows a live paid API primitive for AI agents on Algorand.")
+    return img
+
+
+def slide_2() -> Image.Image:
+    img, draw = base("Problem: raw chain data is not explanation-ready")
+    terminal(
+        draw,
+        (90, 220, 895, 790),
+        "raw Algorand indexer data",
+        [
+            ('"tx-type": "axfer"', MUTED),
+            ('"asset-transfer-transaction": {', MUTED),
+            ('  "amount": 12300000,', YELLOW),
+            ('  "asset-id": 31566704,', YELLOW),
+            ('  "receiver": "XOFKWH...U3DL3Q"', MUTED),
+            ("}", MUTED),
+            ('"note": "cmVudCBwYXltZW50"', YELLOW),
+            ('"application-id": 1002541853', YELLOW),
+        ],
+    )
+    rounded(draw, (1015, 220, 1830, 790), CARD, radius=26)
+    text(draw, (1065, 270), "What apps and agents actually need", F_H2, TEXT)
+    bullets(
+        draw,
+        [
+            "Scaled amounts like 12.30 USDC",
+            "Readable asset and app labels",
+            "Decoded notes, fees, timestamps, and counterparties",
+            "One explanation that can be shown to a user",
+        ],
+        1065,
+        360,
+        max_width=680,
+    )
+    caption(draw, "tx402 removes repetitive decoding work for wallets, agents, explorers, and compliance tools.")
+    return img
+
+
+def slide_3() -> Image.Image:
+    img, draw = base("Solution: one txid in, explanation out")
+    browser(
+        draw,
+        (90, 215, 1830, 760),
+        "GET /explain?txid=7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ",
+        [
+            "{",
+            '  "txid": "7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ",',
+            '  "network": "mainnet",',
+            '  "summary": "On June 15, 2019, wallet I3345F...EUBEGU sent 0.10 ALGO to ALGORA...N5DNAU. Paid 0.001 ALGO in fees.",',
+            '  "details": {',
+            '    "type": "pay",',
+            '    "transfer": { "amount": "0.10", "unit": "ALGO" }',
+            "  }",
+            "}",
+        ],
+    )
+    caption(draw, "The response is both human-readable and structured for downstream applications.")
+    return img
+
+
+def slide_4() -> Image.Image:
+    img, draw = base("Live production checks")
+    terminal(
+        draw,
+        (90, 215, 1830, 790),
+        "PowerShell - production smoke test",
+        [
+            ("$env:TX402_URL='https://tx402-production.up.railway.app'", ACCENT),
+            ("$env:DEEP_HEALTH_NETWORK='mainnet'", ACCENT),
+            ("npm run smoke", TEXT),
+            ("", TEXT),
+            ("Smoke testing https://tx402-production.up.railway.app", MUTED),
+            ("PASS /health -> 200", GREEN),
+            ("PASS /health?deep=1 -> 200", GREEN),
+            ("PASS /discovery -> 200 (priced=true, price=$0.005)", GREEN),
+            ("PASS /explain unpaid challenge -> 402", GREEN),
+            ("Smoke test complete.", GREEN),
+        ],
+    )
+    caption(draw, "The live deployment is healthy and correctly returns HTTP 402 for unpaid /explain calls.")
+    return img
+
+
+def slide_5() -> Image.Image:
+    img, draw = base("x402 payment challenge on Algorand")
+    terminal(
+        draw,
+        (90, 215, 1830, 790),
+        "npm run example:client",
+        [
+            ("tx402: https://tx402-production.up.railway.app", TEXT),
+            ("Discovery: priced=true, price=$0.005", GREEN),
+            ("HTTP 402", YELLOW),
+            ('"scheme": "exact"', MUTED),
+            ('"network": "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8="', MUTED),
+            ('"amount": "5000"', ACCENT),
+            ('"asset": "31566704"', ACCENT),
+            ('"payTo": "6RK3U3OF2B4Q773L4KC7OVFHQGU5I74NHRZ36QN6CVF527CKXAL62YR754"', MUTED),
+            ('"decimals": 6', MUTED),
+        ],
+    )
+    caption(draw, "The client is read-only by default: it shows payment requirements without spending funds.")
+    return img
+
+
+def slide_6() -> Image.Image:
+    img, draw = base("Developer integration surface")
+    rounded(draw, (90, 220, 560, 720), CARD, radius=24)
+    rounded(draw, (725, 220, 1195, 720), CARD, radius=24)
+    rounded(draw, (1360, 220, 1830, 720), CARD, radius=24)
+    text(draw, (135, 280), "OpenAPI", F_H2, ACCENT)
+    text(draw, (770, 280), "Node client", F_H2, ACCENT)
+    text(draw, (1405, 280), "MCP wrapper", F_H2, ACCENT)
+    text(draw, (135, 365), "/openapi.json\nOpenAPI 3.1 spec for regular API integrations.", F_BODY, TEXT, max_width=370)
+    text(draw, (770, 365), "examples/node-client.mjs\nSafe read-only default, optional paid mode.", F_BODY, TEXT, max_width=370)
+    text(draw, (1405, 365), "mcp/tx402-mcp.mjs\nAgent-facing stdio tool wrapper.", F_BODY, TEXT, max_width=370)
+    caption(draw, "Phase 6 ships the API, documentation, OpenAPI spec, example client, and MCP wrapper.")
+    return img
+
+
+def slide_7() -> Image.Image:
+    img, draw = base("Mainnet settlement proof")
+    rounded(draw, (90, 235, 1830, 760), CARD, radius=28)
+    text(draw, (145, 300), "First real x402 settlement", F_H2, TEXT)
+    bullets(
+        draw,
+        [
+            "Network: Algorand Mainnet",
+            "Asset: USDC, asset ID 31566704",
+            "Amount: 0.005000 USDC",
+            "Receiver balance: 3.350000 -> 3.355000 USDC",
+        ],
+        145,
+        390,
+        max_width=760,
+    )
+    text(draw, (1000, 390), "Settlement TxID", F_H2, ACCENT)
+    text(
+        draw,
+        (1000, 470),
+        "XA7HMRPUV4X2GWI4AAGUT5FKAVTNCQJ5ZMUNTVTBKG3GZMES27LA",
+        F_BODY_BOLD,
+        TEXT,
+        max_width=720,
+    )
+    caption(draw, "tx402 is not just a mockup: it has settled a real Mainnet x402 payment.")
+    return img
+
+
+def slide_8() -> Image.Image:
+    img, draw = base("Submission summary")
+    rounded(draw, (90, 230, 1830, 760), CARD, radius=28)
+    bullets(
+        draw,
+        [
+            "Project: tx402",
+            "One-liner: plain-English Algorand transaction explanations, paid per call by AI agents.",
+            "Target users: AI agents, developers, wallets, portfolio trackers, explorers, and compliance tools.",
+            "Live URL: https://tx402-production.up.railway.app",
+            "Repository: https://github.com/Mahesvannan/tx402",
+        ],
+        145,
+        300,
+        max_width=1510,
+    )
+    caption(draw, "tx402 demonstrates x402 as a practical payment layer for agent-accessible APIs on Algorand.")
+    return img
+
+
+slides = [
+    ("01-title", slide_1, 20),
+    ("02-problem", slide_2, 25),
+    ("03-solution", slide_3, 28),
+    ("04-live-checks", slide_4, 30),
+    ("05-payment-challenge", slide_5, 32),
+    ("06-integrations", slide_6, 26),
+    ("07-settlement", slide_7, 30),
+    ("08-summary", slide_8, 24),
+]
 
 
 def run_ffmpeg(args: list[str]) -> None:
     subprocess.run([str(FFMPEG), "-hide_banner", "-loglevel", "error", *args], check=True)
 
 
-def make_segment(index: int, image: Path, audio: Path, duration: int) -> Path:
-    segment = VIDEO / f"segment-{index + 1:02d}.mp4"
+def make_segment(index: int, name: str, image: Image.Image, duration: int) -> Path:
+    png = FRAMES / f"{index + 1:02d}-{name}.png"
+    mp4 = FRAMES / f"{index + 1:02d}-{name}.mp4"
+    image.save(png)
     run_ffmpeg(
         [
             "-y",
             "-loop",
             "1",
             "-i",
-            str(image),
+            str(png),
+            "-f",
+            "lavfi",
             "-i",
-            str(audio),
+            "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-t",
+            str(duration),
             "-vf",
             "scale=1920:1080,format=yuv420p",
             "-c:v",
             "libx264",
             "-preset",
             "veryfast",
-            "-tune",
-            "stillimage",
             "-c:a",
             "aac",
-            "-af",
-            "apad",
             "-b:a",
-            "160k",
-            "-t",
-            str(duration),
-            str(segment),
+            "96k",
+            "-shortest",
+            str(mp4),
         ]
     )
-    return segment
+    return mp4
 
 
 def main() -> None:
     if not FFMPEG.exists():
         raise SystemExit(f"ffmpeg binary not found: {FFMPEG}")
 
-    for directory in [OUT, SLIDES, AUDIO, VIDEO]:
-        directory.mkdir(parents=True, exist_ok=True)
-
-    segments: list[Path] = []
-    for index, slide in enumerate(slides):
-        image = make_slide(index, slide)
-        audio = make_wav(index, str(slide["narration"]))
-        segments.append(make_segment(index, image, audio, int(slide["duration"])))
+    FRAMES.mkdir(parents=True, exist_ok=True)
+    segments = [make_segment(i, name, factory(), duration) for i, (name, factory, duration) in enumerate(slides)]
 
     concat = OUT / "concat.txt"
-    concat.write_text(
-        "\n".join(f"file '{segment.as_posix()}'" for segment in segments),
-        encoding="utf-8",
-    )
+    concat.write_text("\n".join(f"file '{segment.as_posix()}'" for segment in segments), encoding="utf-8")
 
     run_ffmpeg(["-y", "-f", "concat", "-safe", "0", "-i", str(concat), "-c", "copy", str(FINAL)])
 
     probe = subprocess.run(
-        [
-            str(FFMPEG),
-            "-hide_banner",
-            "-i",
-            str(FINAL),
-        ],
+        [str(FFMPEG), "-hide_banner", "-i", str(FINAL)],
         stderr=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True,
     )
-
     metadata = {
         "video": str(FINAL),
         "slides": len(slides),
+        "duration_target_seconds": sum(duration for _, _, duration in slides),
         "bytes": FINAL.stat().st_size,
         "ffmpeg_probe": "\n".join(probe.stderr.splitlines()[:12]),
     }
