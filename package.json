@@ -10,7 +10,8 @@
     "dev": "node --watch src/index.js",
     "test": "node test/decoder.test.js && node test/rateLimit.test.js && node test/payments.test.js && node test/index.test.js && node test/index.paid.test.js",
     "smoke": "node scripts/smoke-phase3.mjs",
-    "smoke:paid": "node scripts/pay-and-explain.mjs"
+    "smoke:paid": "node scripts/pay-and-explain.mjs",
+    "phase4:check": "node scripts/check-phase4-mainnet.mjs"
   },
   "engines": {
     "node": ">=20"

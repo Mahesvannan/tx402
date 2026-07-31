@@ -97,6 +97,17 @@ Convenience commands:
 
 Both support `TX402_URL=...` for hitting the deployed host instead of localhost.
 
+## Mainnet preflight (Phase 4)
+
+Before switching the Railway service to Mainnet, verify the receiver address:
+
+```bash
+MAINNET_PAY_TO=YOUR_MAINNET_ADDRESS_OPTED_IN_TO_USDC npm run phase4:check
+```
+
+The current Testnet receiver is not automatically Mainnet-ready. The Mainnet
+receiver must exist on Mainnet and be opted into USDC asset `31566704`.
+
 ## Learn more
 
 See [`CLAUDE.md`](./CLAUDE.md) for architecture, the full file layout,
