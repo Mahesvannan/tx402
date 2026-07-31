@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -356,7 +357,9 @@ slides = [
         slide_1,
         24,
         "Hi, this is tx402: a live Algorand API that turns transaction IDs into plain-English explanations. "
-        "The endpoint is paid per call using x402, with Mainnet USDC settlement.",
+        "The endpoint is paid per call using x402, with Mainnet USDC settlement. "
+        "The goal is simple: give an agent a transaction ID, let it pay a tiny amount, and return an explanation "
+        "that a real user can understand.",
     ),
     (
         "02-problem",
@@ -364,55 +367,78 @@ slides = [
         31,
         "The problem is that raw Algorand transaction data is accurate, but not explanation-ready. "
         "Amounts are stored in base units, assets and applications are numeric IDs, and notes may need decoding. "
-        "Agents should not rebuild this translation layer every time.",
+        "That is fine for indexers and backends, but it is not what users expect from wallets, explorers, "
+        "portfolio tools, or AI assistants. Agents should not rebuild this translation layer every time.",
     ),
     (
         "03-solution",
         slide_3,
         31,
         "tx402 solves this by accepting one transaction ID and returning one clear sentence plus structured JSON. "
-        "The result is deterministic, fast, and useful for wallets, explorers, portfolio tools, and AI agents.",
+        "It scales ALGO and ASA amounts, decodes notes, includes fees, timestamps, counterparties, and known labels, "
+        "and avoids putting an LLM in the serving path. The result is deterministic, fast, and useful for wallets, "
+        "explorers, portfolio tools, and AI agents.",
     ),
     (
         "04-live-checks",
         slide_4,
         34,
         "Here is the live production check. Health passes, deep health passes, discovery reports that the API is priced, "
-        "and an unpaid explain request correctly returns HTTP 402 instead of giving away the resource.",
+        "and an unpaid explain request correctly returns HTTP 402 instead of giving away the resource. "
+        "This proves the deployed service is reachable, the upstream checks are working, and the payment gate is active.",
     ),
     (
         "05-payment-challenge",
         slide_5,
         37,
         "The example client is safe by default. It does not spend funds. It calls the live service, reads discovery, "
-        "and prints the x402 payment challenge: exact scheme, Algorand network, USDC asset ID, amount, and receiver address.",
+        "and prints the x402 payment challenge: exact scheme, Algorand network, USDC asset ID, amount, and receiver address. "
+        "A paid client can then sign on the buyer side and send the payment proof back to the API.",
     ),
     (
         "06-integrations",
         slide_6,
         30,
         "For integration, Phase 6 ships three developer surfaces: an OpenAPI specification, a Node client example, "
-        "and an MCP wrapper for agent workflows. Paid mode is explicit and opt-in.",
+        "and an MCP wrapper for agent workflows. Paid mode is explicit and opt-in, so developers can test discovery "
+        "and payment requirements safely before allowing an agent to spend funds.",
     ),
     (
         "07-settlement",
         slide_7,
         34,
         "This is not only a mockup. tx402 has completed a real x402 settlement on Algorand Mainnet. "
-        "The buyer paid zero point zero zero five USDC, and the receiver balance increased by exactly that amount.",
+        "The buyer paid zero point zero zero five USDC, and the receiver balance increased by exactly that amount. "
+        "That proves the core flow works end to end: pricing, challenge, client-side signing, facilitator verification, "
+        "settlement, and then the paid API response.",
     ),
     (
         "08-summary",
         slide_8,
         28,
         "In summary, tx402 demonstrates x402 as a practical payment layer for agent-accessible APIs on Algorand. "
-        "It is live, documented, integrated, and ready to submit.",
+        "It is live, documented, integrated, and ready to submit. The next steps are broader transaction coverage, "
+        "more verified protocol labels, and distribution to agent developers who need paid on-chain data tools.",
     ),
 ]
 
 
 def run_ffmpeg(args: list[str]) -> None:
     subprocess.run([str(FFMPEG), "-hide_banner", "-loglevel", "error", *args], check=True)
+
+
+def media_duration(path: Path) -> float:
+    probe = subprocess.run(
+        [str(FFMPEG), "-hide_banner", "-i", str(path)],
+        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr)
+    if not match:
+        raise RuntimeError(f"Could not read media duration for {path}")
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
 async def synthesize_voice(index: int, name: str, narration: str) -> Path:
@@ -425,12 +451,12 @@ async def synthesize_voice(index: int, name: str, narration: str) -> Path:
         ) from exc
 
     mp3 = AUDIO / f"{index + 1:02d}-{name}.mp3"
-    communicate = edge_tts.Communicate(narration, VOICE, rate="+0%", pitch="-2Hz")
+    communicate = edge_tts.Communicate(narration, VOICE, rate="-5%", pitch="-2Hz")
     await communicate.save(str(mp3))
     return mp3
 
 
-def make_segment(index: int, name: str, image: Image.Image, audio: Path, duration: int) -> Path:
+def make_segment(index: int, name: str, image: Image.Image, audio: Path, duration: float) -> Path:
     png = FRAMES / f"{index + 1:02d}-{name}.png"
     mp4 = FRAMES / f"{index + 1:02d}-{name}.mp4"
     image.save(png)
@@ -444,7 +470,7 @@ def make_segment(index: int, name: str, image: Image.Image, audio: Path, duratio
             "-i",
             str(audio),
             "-t",
-            str(duration),
+            f"{duration:.2f}",
             "-vf",
             "scale=1920:1080,format=yuv420p",
             "-c:v",
@@ -472,9 +498,12 @@ def main() -> None:
     FRAMES.mkdir(parents=True, exist_ok=True)
     AUDIO.mkdir(parents=True, exist_ok=True)
     segments = []
+    actual_durations = []
     for i, (name, factory, duration, narration) in enumerate(slides):
         audio = asyncio.run(synthesize_voice(i, name, narration))
-        segments.append(make_segment(i, name, factory(), audio, duration))
+        actual_duration = media_duration(audio) + 0.8
+        actual_durations.append(actual_duration)
+        segments.append(make_segment(i, name, factory(), audio, actual_duration))
 
     concat = OUT / "concat.txt"
     concat.write_text("\n".join(f"file '{segment.as_posix()}'" for segment in segments), encoding="utf-8")
@@ -491,7 +520,8 @@ def main() -> None:
         "video": str(FINAL),
         "slides": len(slides),
         "voice": VOICE,
-        "duration_target_seconds": sum(duration for _, _, duration, _ in slides),
+        "duration_seconds": round(sum(actual_durations), 2),
+        "slide_durations_seconds": [round(value, 2) for value in actual_durations],
         "bytes": FINAL.stat().st_size,
         "ffmpeg_probe": "\n".join(probe.stderr.splitlines()[:12]),
     }
