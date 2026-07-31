@@ -131,6 +131,11 @@ By default the MCP wrapper is read-only and returns x402 payment requirements
 for paid calls. To let it pay from a local wallet, set
 `TX402_MCP_ENABLE_PAYMENTS=1` and `CONFIRM_MAINNET_PAYMENT=1`.
 
+## Submission Assets
+
+- [Pitch deck](./submission/pitch-deck.md)
+- [Demo video script](./submission/demo-video-script.md)
+
 ## Security Notes
 
 - Output strings can contain untrusted on-chain data, including asset names and
