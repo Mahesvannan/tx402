@@ -27,6 +27,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { version: APP_VERSION } = JSON.parse(
   readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
 );
+const OPENAPI_SPEC = JSON.parse(readFileSync(path.join(__dirname, '..', 'openapi.json'), 'utf8'));
 
 const app = express();
 const PORT = process.env.PORT || 4021;
@@ -108,6 +109,10 @@ app.use('/explain', (req, res, next) => {
 
 const discoveryLimiter = rateLimit({ windowMs: 60_000, max: 120 });
 app.use('/discovery', discoveryLimiter);
+
+app.get('/openapi.json', (_req, res) => {
+  res.json(OPENAPI_SPEC);
+});
 
 // F1: /health?deep=1 pings external services (indexer, facilitator) and — unlike
 // plain /health — must not be reachable at unlimited rate, or it becomes a free

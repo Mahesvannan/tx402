@@ -1,0 +1,348 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "tx402 API",
+    "version": "0.1.0",
+    "description": "Plain-English explanations of Algorand transactions, sold as a pay-per-call API with x402."
+  },
+  "servers": [
+    {
+      "url": "https://tx402-production.up.railway.app",
+      "description": "Production"
+    },
+    {
+      "url": "http://localhost:4021",
+      "description": "Local development"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Plain liveness check by default. Add deep=1 for readiness checks against upstream services.",
+        "parameters": [
+          {
+            "name": "deep",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["1"]
+            }
+          },
+          {
+            "name": "network",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["mainnet", "testnet"],
+              "default": "mainnet"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service is live or ready.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid deep-health network parameter.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "429": {
+            "description": "Deep health rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "503": {
+            "description": "Deep readiness check failed.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/discovery": {
+      "get": {
+        "summary": "Discovery metadata",
+        "description": "Machine-readable description of what tx402 sells and whether /explain is priced.",
+        "responses": {
+          "200": {
+            "description": "Discovery metadata.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DiscoveryResponse" }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "OpenAPI specification",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 document for this API.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/explain": {
+      "get": {
+        "summary": "Explain an Algorand transaction",
+        "description": "Returns a plain-English explanation and normalized details for one Algorand transaction. Production requires x402 payment.",
+        "parameters": [
+          {
+            "name": "txid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z2-7]{52}$",
+              "minLength": 52,
+              "maxLength": 52
+            }
+          },
+          {
+            "name": "network",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["mainnet", "testnet"],
+              "default": "mainnet"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction explanation.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExplainResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid txid.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required. The x402 payment challenge is returned in the payment-required response header.",
+            "headers": {
+              "payment-required": {
+                "description": "Base64-encoded x402 payment challenge.",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction not found on the selected network.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "502": {
+            "description": "Indexer or upstream dependency returned an error.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "504": {
+            "description": "Indexer request timed out.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["ok", "service", "version"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "service": { "type": "string", "const": "tx402" },
+          "version": { "type": "string" },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "indexer": { "type": "boolean" },
+              "facilitator": {
+                "oneOf": [
+                  { "type": "boolean" },
+                  { "type": "string", "const": "not configured" }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "DiscoveryResponse": {
+        "type": "object",
+        "required": ["service", "summary", "routes", "deterministic", "llmInServingPath"],
+        "properties": {
+          "service": { "type": "string", "const": "tx402" },
+          "summary": { "type": "string" },
+          "routes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["path", "method", "params", "priced", "price", "paymentProtocol"],
+              "properties": {
+                "path": { "type": "string" },
+                "method": { "type": "string" },
+                "params": { "type": "object" },
+                "priced": { "type": "boolean" },
+                "price": { "type": ["string", "null"] },
+                "paymentProtocol": { "type": ["string", "null"] }
+              }
+            }
+          },
+          "deterministic": { "type": "boolean" },
+          "llmInServingPath": { "type": "boolean" }
+        }
+      },
+      "ExplainResponse": {
+        "type": "object",
+        "required": ["txid", "network", "summary", "details"],
+        "properties": {
+          "txid": { "type": "string" },
+          "network": { "type": "string", "enum": ["mainnet", "testnet"] },
+          "summary": { "type": "string" },
+          "details": { "$ref": "#/components/schemas/DecodedTransaction" }
+        }
+      },
+      "DecodedTransaction": {
+        "type": "object",
+        "required": [
+          "txid",
+          "type",
+          "typeLabel",
+          "sender",
+          "senderShort",
+          "fee",
+          "confirmedRound",
+          "timestamp",
+          "note",
+          "groupId",
+          "isGrouped",
+          "application"
+        ],
+        "properties": {
+          "txid": { "type": "string" },
+          "type": { "type": "string" },
+          "typeLabel": { "type": "string" },
+          "sender": { "type": "string" },
+          "senderShort": { "type": "string" },
+          "fee": {
+            "type": "object",
+            "properties": {
+              "baseUnits": { "type": "integer" },
+              "amount": { "type": "string" },
+              "unit": { "type": "string" }
+            }
+          },
+          "confirmedRound": { "type": ["integer", "null"] },
+          "timestamp": { "type": ["string", "null"] },
+          "note": { "type": ["string", "null"] },
+          "groupId": { "type": ["string", "null"] },
+          "isGrouped": { "type": "boolean" },
+          "receiver": { "type": ["string", "null"] },
+          "receiverShort": { "type": ["string", "null"] },
+          "transfer": {
+            "type": ["object", "null"],
+            "properties": {
+              "baseUnits": { "type": "integer" },
+              "amount": { "type": "string" },
+              "assetId": { "type": "integer" },
+              "assetName": { "type": "string" },
+              "unit": { "type": "string" },
+              "closeRemainderTo": { "type": ["string", "null"] }
+            }
+          },
+          "application": {
+            "type": ["object", "null"],
+            "properties": {
+              "id": { "type": "integer" },
+              "name": { "type": "string" },
+              "category": { "type": "string" },
+              "verified": { "type": "boolean" }
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

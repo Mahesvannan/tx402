@@ -42,6 +42,9 @@ gitignored.
 | `scripts/check-phase4-mainnet.mjs` | Mainnet receiver preflight |
 | `scripts/check-phase5-buyer.mjs` | Mainnet buyer balance and opt-in preflight |
 | `scripts/pay-and-explain.mjs` | x402 buyer client for Testnet or confirmed Mainnet payment |
+| `examples/node-client.mjs` | Public client example; read-only by default, optional paid mode |
+| `mcp/tx402-mcp.mjs` | MCP stdio wrapper; read-only by default, optional paid mode |
+| `openapi.json` | OpenAPI 3.1 document, also served at `/openapi.json` |
 | `test/*.test.js` | No runner dependency; each file is a standalone Node process |
 | `Dockerfile` / `Procfile` / `.dockerignore` | Persistent-process deployment artifacts |
 | `Review.md` | Gitignored audit/review history; read before assuming prior checks were not done |
@@ -80,6 +83,7 @@ Useful checks:
 
 ```bash
 npm run smoke
+npm run example:client
 npm run phase4:check
 npm run phase5:check
 ```
@@ -211,6 +215,39 @@ Balance proof:
 
 - buyer: `1.000000 -> 0.995000` USDC
 - receiver: `3.350000 -> 3.355000` USDC
+
+## Phase 6 Runbook
+
+Phase 6 artifacts:
+
+- `openapi.json`
+- `GET /openapi.json`
+- `examples/node-client.mjs`
+- `mcp/tx402-mcp.mjs`
+
+The example client is read-only by default:
+
+```bash
+npm run example:client
+```
+
+Paid example mode requires:
+
+```bash
+TX402_EXAMPLE_PAY=1 CONFIRM_MAINNET_PAYMENT=1 npm run example:client
+```
+
+The MCP wrapper runs over stdio:
+
+```bash
+npm run mcp
+```
+
+It is read-only by default. Paid MCP mode requires:
+
+```bash
+TX402_MCP_ENABLE_PAYMENTS=1 CONFIRM_MAINNET_PAYMENT=1 npm run mcp
+```
 
 ## Monitoring
 

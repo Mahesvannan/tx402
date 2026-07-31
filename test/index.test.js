@@ -123,6 +123,14 @@ console.log('\nindex.js (free mode) — basic endpoints & hardening');
     assert.strictEqual(body.routes[0].price, null);
   });
 
+  await test('/openapi.json returns the OpenAPI document', async () => {
+    const res = await fetch(`${baseUrl}/openapi.json`);
+    const body = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.openapi, '3.1.0');
+    assert.ok(body.paths['/explain'], 'OpenAPI spec should document /explain');
+  });
+
   await test('helmet security headers are present (L7)', async () => {
     const res = await fetch(`${baseUrl}/health`);
     assert.ok(res.headers.get('x-content-type-options'), 'X-Content-Type-Options missing');

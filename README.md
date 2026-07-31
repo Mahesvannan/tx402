@@ -48,6 +48,7 @@ Public routes:
 - `GET /health` - process liveness
 - `GET /health?deep=1&network=mainnet` - readiness check for upstream services
 - `GET /discovery` - machine-readable service description and pricing metadata
+- `GET /openapi.json` - OpenAPI 3.1 specification
 - `GET /explain?txid=...&network=mainnet` - paid transaction explanation
 
 `/explain` is priced at `$0.005` per call. Production currently accepts Mainnet
@@ -103,6 +104,33 @@ curl "http://localhost:4021/explain?txid=SOME_REAL_MAINNET_TXID"
 The app reads `.env` when present. Leave `USDC_ASSET_ID` unset unless you need a
 non-standard asset; the code derives the canonical USDC asset from `NETWORK`.
 
+## Client Examples
+
+Read-only example client:
+
+```bash
+npm run example:client
+```
+
+The default client prints discovery metadata and the x402 payment challenge
+without spending funds. To make it pay, configure a funded buyer wallet and set
+`TX402_EXAMPLE_PAY=1` plus `CONFIRM_MAINNET_PAYMENT=1`.
+
+OpenAPI:
+
+- [openapi.json](./openapi.json)
+- `https://tx402-production.up.railway.app/openapi.json`
+
+MCP wrapper:
+
+```bash
+npm run mcp
+```
+
+By default the MCP wrapper is read-only and returns x402 payment requirements
+for paid calls. To let it pay from a local wallet, set
+`TX402_MCP_ENABLE_PAYMENTS=1` and `CONFIRM_MAINNET_PAYMENT=1`.
+
 ## Security Notes
 
 - Output strings can contain untrusted on-chain data, including asset names and
@@ -119,7 +147,7 @@ non-standard asset; the code derives the canonical USDC asset from `NETWORK`.
 - [x] Phase 3 - public HTTPS deployment
 - [x] Phase 4 - Mainnet payment configuration
 - [x] Phase 5 - first real Mainnet settlement
-- [ ] Phase 6 - example client, OpenAPI spec, optional MCP wrapper
+- [x] Phase 6 - example client, OpenAPI spec, optional MCP wrapper
 
 First Mainnet settlement:
 
