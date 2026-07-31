@@ -110,6 +110,35 @@ MAINNET_PAY_TO=YOUR_MAINNET_ADDRESS_OPTED_IN_TO_USDC npm run phase4:check
 The current Testnet receiver is not automatically Mainnet-ready. The Mainnet
 receiver must exist on Mainnet and be opted into USDC asset `31566704`.
 
+## First Mainnet settlement (Phase 5)
+
+Create a local gitignored buyer wallet file:
+
+```json
+{ "mnemonic": "YOUR MAINNET BUYER MNEMONIC" }
+```
+
+Save it as `.mainnet-buyer-wallet.local.json`. The buyer wallet must hold real
+Mainnet ALGO for fees/minimum balance and at least `0.005` Mainnet USDC.
+
+To check a public buyer address before handling any private key:
+
+```bash
+BUYER_ADDRESS=YOUR_MAINNET_BUYER_ADDRESS npm run phase5:check
+```
+
+Before paying with a local wallet file:
+
+```bash
+npm run phase5:check
+```
+
+To make the first real Mainnet payment:
+
+```bash
+TX402_URL=https://tx402-production.up.railway.app CONFIRM_MAINNET_PAYMENT=1 npm run phase5:settle
+```
+
 ## Learn more
 
 See [`CLAUDE.md`](./CLAUDE.md) for architecture, the full file layout,

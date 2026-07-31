@@ -3,38 +3,76 @@
  *
  * This is the CLIENT half of the loop. It uses the buyer wallet's key to
  * sign an Algorand USDC transfer when the server answers 402, then retries
- * with the signed payment attached — all handled by wrapFetchWithPayment.
+ * with the signed payment attached. wrapFetchWithPayment handles the x402
+ * challenge/retry flow.
  *
- * Reads the throwaway Testnet buyer mnemonic from
- * .testnet-buyer-wallet.local.json (gitignored). Never used on Mainnet.
+ * Reads a local gitignored buyer mnemonic file:
+ *   - Testnet: .testnet-buyer-wallet.local.json
+ *   - Mainnet: .mainnet-buyer-wallet.local.json
  *
- * Run:  node scripts/pay-and-explain.mjs [txid]
+ * Run:
+ *   node scripts/pay-and-explain.mjs [txid]
+ *
+ * Mainnet requires:
+ *   CONFIRM_MAINNET_PAYMENT=1
  */
 
 import fs from 'node:fs';
+import dotenv from 'dotenv';
 import algosdk from 'algosdk';
 import { wrapFetchWithPayment, x402Client } from '@x402/fetch';
 import { ExactAvmScheme } from '@x402/avm/exact/client';
-import { toClientAvmSigner } from '@x402/avm';
+import {
+  ALGORAND_TESTNET_CAIP2,
+  getNetworkFromCaip2,
+  toClientAvmSigner,
+} from '@x402/avm';
 
-const SERVER = process.env.TX402_URL || 'http://localhost:4021';
-const NETWORK =
-  process.env.NETWORK || 'algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=';
-const ALGOD_URL = process.env.ALGOD_URL || 'https://testnet-api.algonode.cloud';
+dotenv.config({ quiet: true });
+
+const SERVER = (process.env.TX402_URL || 'http://localhost:4021').replace(/\/+$/, '');
+const NETWORK = process.env.NETWORK || ALGORAND_TESTNET_CAIP2;
+const RESOLVED_NETWORK = getNetworkFromCaip2(NETWORK);
+const DEFAULT_ALGOD_URL =
+  RESOLVED_NETWORK === 'mainnet'
+    ? 'https://mainnet-api.algonode.cloud'
+    : 'https://testnet-api.algonode.cloud';
+const ALGOD_URL = process.env.ALGOD_URL || DEFAULT_ALGOD_URL;
+const WALLET_FILE =
+  process.env.BUYER_WALLET_FILE ||
+  (RESOLVED_NETWORK === 'mainnet'
+    ? '.mainnet-buyer-wallet.local.json'
+    : '.testnet-buyer-wallet.local.json');
 const TXID =
   process.argv[2] || '7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ';
 
+if (RESOLVED_NETWORK === 'mainnet' && process.env.CONFIRM_MAINNET_PAYMENT !== '1') {
+  console.error(
+    'Refusing to spend Mainnet funds. Set CONFIRM_MAINNET_PAYMENT=1 after verifying ' +
+      'BUYER_WALLET_FILE points to the intended Mainnet buyer wallet.'
+  );
+  process.exit(1);
+}
+
+if (RESOLVED_NETWORK !== 'mainnet' && NETWORK !== ALGORAND_TESTNET_CAIP2) {
+  console.error(`Unsupported network: ${NETWORK}`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(WALLET_FILE)) {
+  console.error(`Missing buyer wallet file: ${WALLET_FILE}`);
+  console.error('Expected JSON shape: { "mnemonic": "..." }');
+  process.exit(1);
+}
+
 // Load the buyer key and hand it to the x402 AVM signer as base64.
-const wallet = JSON.parse(
-  fs.readFileSync('.testnet-buyer-wallet.local.json', 'utf8')
-);
+const wallet = JSON.parse(fs.readFileSync(WALLET_FILE, 'utf8'));
 const acct = algosdk.mnemonicToSecretKey(wallet.mnemonic);
 const signer = toClientAvmSigner(Buffer.from(acct.sk).toString('base64'));
 
 const client = new x402Client();
 client.register(NETWORK, new ExactAvmScheme(signer, { algodUrl: ALGOD_URL }));
 
-// Trace the payment lifecycle so we can see exactly where it succeeds/fails.
 client.onAfterPaymentCreation?.(async () => {
   console.log('[trace] payment payload created + signed OK');
 });
@@ -48,6 +86,8 @@ client.onPaymentResponse?.(async ({ response }) => {
 const fetchWithPay = wrapFetchWithPayment(fetch, client);
 
 console.log(`Buyer:  ${signer.address}`);
+console.log(`Network: ${RESOLVED_NETWORK}`);
+console.log(`Wallet: ${WALLET_FILE}`);
 console.log(`Paying: ${SERVER}/explain?txid=${TXID}\n`);
 
 const res = await fetchWithPay(`${SERVER}/explain?txid=${TXID}`);
