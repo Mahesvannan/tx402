@@ -1,154 +1,251 @@
-Guidance for anyone (human or Claude) working in this repository.
+# tx402 Maintainer Notes
 
-## What this is
+Guidance for humans and coding agents working in this repository.
 
-tx402 explains Algorand transactions in plain English and sells the answer
-per call via the x402 protocol. Two halves:
+README.md is the public project document. Keep detailed implementation notes,
+phase runbooks, deployment evidence, and operational cautions here.
 
-- **Pure core** — `src/decoder.js` (raw indexer JSON → normalised fields) and
-  `src/narrator.js` (normalised fields → one English sentence). Both are
-  synchronous and total: no network, no clock reads beyond what's passed in,
-  never throw. Keep it that way — it's what makes the service deterministic
-  and cheap to serve.
-- **Serving shell** — `src/index.js` (HTTP routes), `src/indexer.js` (the only
-  file that talks to the network — AlgoNode), `src/payments.js` (the x402
-  pay-per-call gate via the hosted GoPlausible facilitator; never touches a
-  private key), `src/rateLimit.js` (dependency-free per-IP limiter),
-  `src/knownApps.js` (app/asset ID → human name — the file that makes the
-  narration actually valuable).
+## Current Production
 
-## Layout
+Railway project:
+
+- project: `tx402`
+- url: `https://tx402-production.up.railway.app`
+- service: `tx402`
+- environment: `production`
+- region: `sfo`
+
+Live payment configuration:
+
+- network: Mainnet
+- `NETWORK=algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=`
+- `USDC_ASSET_ID=31566704`
+- `PAY_TO=6RK3U3OF2B4Q773L4KC7OVFHQGU5I74NHRZ36QN6CVF527CKXAL62YR754`
+- `FACILITATOR_URL=https://facilitator.goplausible.xyz`
+- `TRUST_PROXY=1`
+
+Do not commit `.env` or any wallet file. `*.local.json` is intentionally
+gitignored.
+
+## File Layout
 
 | File | Job |
 |---|---|
-| `src/index.js` | HTTP routes, middleware ordering, graceful shutdown |
-| `src/indexer.js` | Talks to AlgoNode's public indexer; also exposes `checkIndexerHealth` for the deep health check |
-| `src/decoder.js` | Pure: raw JSON → normalised fields |
-| `src/narrator.js` | Pure: normalised fields → English sentence |
-| `src/knownApps.js` | App ID / asset ID → human name |
-| `src/payments.js` | x402 pay-per-call gate for `/explain`; no-ops (stays free) until `PAY_TO` is set |
-| `src/rateLimit.js` | In-memory per-IP fixed-window limiter |
-| `test/decoder.test.js` | Fixture tests for the two pure modules |
-| `test/rateLimit.test.js` | Rate limiter unit tests, incl. the eviction-sweep regression |
-| `test/payments.test.js` | Startup config guard regressions in `payments.js` |
-| `test/index.test.js` | Live HTTP integration tests, free mode |
-| `test/index.paid.test.js` | Live HTTP integration tests, paid mode — touches the live facilitator |
-| `Dockerfile` / `Procfile` / `.dockerignore` | Container build for a persistent-process deploy |
-| `Review.md` | Running review/audit log across every pass on this project. **Gitignored on purpose** — internal only, never pushed. Read it for the full history of what's been checked and why; it is the authoritative record, not this file. |
+| `src/index.js` | HTTP routes, middleware ordering, logging, health checks, graceful shutdown |
+| `src/indexer.js` | AlgoNode indexer client and deep-health indexer probe |
+| `src/decoder.js` | Pure raw transaction decoder |
+| `src/narrator.js` | Pure plain-English narrator |
+| `src/knownApps.js` | App and asset label cache; protocol labels must be verified before use |
+| `src/payments.js` | x402 payment gate configuration; no private keys |
+| `src/rateLimit.js` | In-memory fixed-window per-IP limiter |
+| `scripts/smoke-phase3.mjs` | Public route deployment smoke test |
+| `scripts/check-phase4-mainnet.mjs` | Mainnet receiver preflight |
+| `scripts/check-phase5-buyer.mjs` | Mainnet buyer balance and opt-in preflight |
+| `scripts/pay-and-explain.mjs` | x402 buyer client for Testnet or confirmed Mainnet payment |
+| `test/*.test.js` | No runner dependency; each file is a standalone Node process |
+| `Dockerfile` / `Procfile` / `.dockerignore` | Persistent-process deployment artifacts |
+| `Review.md` | Gitignored audit/review history; read before assuming prior checks were not done |
 
-## Running & testing
+## Invariants
+
+- Keep `src/decoder.js` and `src/narrator.js` pure and synchronous. They should
+  not do network I/O or depend on wall-clock time beyond passed input.
+- `src/indexer.js` should remain the only module that talks to the Algorand
+  indexer.
+- The server never handles private keys. Buyer signing belongs in local client
+  scripts or external clients.
+- Validate request shape before the payment gate. A request that will fail with
+  `400` must not require payment first.
+- Payment settles only after a successful `/explain` response.
+- Do not trust `X-Forwarded-For` unless `TRUST_PROXY=1` is set behind a proxy
+  that overwrites inbound forwarding headers.
+- Do not horizontally scale past one instance without replacing the in-memory
+  limiter with a shared-store limiter.
+
+## Running And Testing
 
 ```bash
 npm install
-npm start          # http://localhost:4021
+npm start
 npm test
 ```
 
-`npm test` chains 5 files, each a separate `node` process (no test runner
-dependency). Several of them make **real** outbound calls (AlgoNode, the
-GoPlausible facilitator) rather than mocking the network — that's
-deliberate; every fix in this project has been verified live, not just
-read-reviewed, and the tests follow the same standard. Paid-mode HTTP tests
-are split into their own process (`index.paid.test.js`) because
-`src/index.js` imports `src/payments.js` via a plain, non-cache-busted
-specifier — correct for production, but it means Node's module cache pins
-whichever config loaded first for the lifetime of one process, so free/paid
-server instances need separate processes to get genuinely independent
-config.
+`npm test` chains five standalone Node scripts. Some tests touch live external
+services: AlgoNode and the GoPlausible facilitator. Paid-mode HTTP tests run in
+a separate process because `src/index.js` imports `src/payments.js` through a
+normal module specifier, and Node module caching pins env-derived payment config
+for the process lifetime.
 
-## Enabling payments
+Useful checks:
 
-`/explain` is free until `PAY_TO` is set in `.env`:
+```bash
+npm run smoke
+npm run phase4:check
+npm run phase5:check
+```
 
-1. Copy `.env.example` to `.env`.
-2. Get a Testnet Algorand address opted in to Testnet USDC (asset
-   `10458941`) — e.g. [Lora](https://lora.algokit.io/testnet), funded from
-   the [Testnet dispenser](https://bank.testnet.algorand.network/).
-3. Set `PAY_TO` to that address and restart. Boot log should read
-   `x402 payments ENABLED for /explain` instead of the free-fallback warning.
+For a deployed host:
 
-No private key ever touches this codebase — `src/payments.js` only declares
-a price and receiving address; `FACILITATOR_URL` handles verify + settle.
+```bash
+TX402_URL=https://tx402-production.up.railway.app npm run smoke
+```
 
-## Deploying
+## Deployment Runbook
 
-**Persistent-process host only** — Railway, Fly, Render, or any Docker host
-(`Dockerfile`/`Procfile` included). **Not Vercel or other FaaS/serverless.**
-The rate limiter keeps state in an in-process `Map`, and graceful shutdown
-assumes a listening server the platform signals on redeploy. On serverless,
-each invocation is a fresh process — the limiter's `Map` never accumulates
-state, so per-IP limiting (the only abuse protection in free/unpaid mode)
-silently becomes a no-op, and `app.listen()` doesn't fit the handler model
-anyway. Real serverless support would need a handler adapter *and* a
-shared-store limiter (Redis/Upstash) — a rework, not a flag.
+Use a persistent-process host only: Railway, Fly, Render, or any Docker host.
+Do not use Vercel/serverless for the current app shape.
 
-Behind a reverse proxy, set **`TRUST_PROXY=1`** — otherwise every request
-looks like it comes from the proxy's one IP and per-IP rate limiting
-collapses to a single shared bucket. Only set it once you've confirmed the
-proxy actually overwrites inbound `X-Forwarded-For`, or a client can spoof
-the header and bypass the limit entirely.
+Reason: the app calls `app.listen`, uses an in-memory per-IP limiter, and relies
+on process shutdown signals for graceful deploy drains. Serverless support would
+require an Express handler adapter and a shared limiter such as Redis.
 
-`SIGTERM`/`SIGINT` drain in-flight requests before exiting (verified against
-a real `docker stop`, not just read — exits `0` with a clean drain log).
+Railway setup used for Phase 3:
 
-**Scaling past one instance:** the rate limiter is per-process. Multiple
-instances behind a load balancer means multiple independent buckets — swap
-in a shared-store limiter (Redis) before running more than one.
+```bash
+railway up --new --name tx402 --detach --message "Phase 3 public Testnet deploy"
+railway domain --json
+railway service source connect --repo Mahesvannan/tx402 --branch master --service tx402
+```
 
-**Monitoring:** `/explain` depends on two external services with no
-retry/fallback — the AlgoNode indexer and (paid mode) the GoPlausible
-facilitator. Plain `/health` is liveness-only. Point uptime monitors at
-**`/health?deep=1`** instead for a real readiness signal — it pings both
-live and returns `503` if either is down. That route is itself rate-limited
-and result-cached (15s TTL, in-flight deduped) so it can't become a free
-amplifier against those services regardless of how many clients poll it.
+Runtime variables for production:
 
-## Security model
+```env
+FACILITATOR_URL=https://facilitator.goplausible.xyz
+NETWORK=algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=
+PAY_TO=6RK3U3OF2B4Q773L4KC7OVFHQGU5I74NHRZ36QN6CVF527CKXAL62YR754
+USDC_ASSET_ID=31566704
+TRUST_PROXY=1
+```
 
-- **Untrusted on-chain strings.** `summary`, `assetName`, `unit`, `note` are
-  all attacker-controlled (anyone can mint an ASA named `<script>...`).
-  Safe as JSON; **not** HTML-escaped. Any HTML-rendering consumer must
-  escape these fields itself.
-- `/explain` is rate-limited per IP, stricter in free/unpaid mode (no
-  payment gate to throttle abuse otherwise).
-- `txid` is validated as 52 base32 chars **before** any network call and
-  **before** the payment gate — a request that was always going to 400
-  never gets charged.
-- `PAY_TO` and the resolved USDC asset ID are validated at startup; the
-  server refuses to boot rather than advertise a broken or wrong-network
-  price.
-- **Unverified protocol names never ship as fact.** `narrator.js` only
-  states a name (e.g. "Tinyman AMM v2") when `knownApps.js` flags that entry
-  `verified: true`; otherwise it says the honest "smart contract 12345".
-  This is enforced in code, not convention — see "Before Mainnet" below.
-- Payment is verified before the call runs but only **settles on a
-  successful response** — a failed `/explain` call never charges the
-  caller. Confirmed live repeatedly across review passes.
+Do not set `PORT` on Railway. Railway provides it and `src/index.js` reads
+`process.env.PORT`.
 
-## Before Mainnet
+Smoke test after deployment:
 
-Every entry in `src/knownApps.js` is `verified: false` (placeholders). The
-narrator already refuses to state an unverified name, so this can't produce
-a *wrong* label — but it does mean every matching `appl` call currently
-reads as "smart contract 12345" instead of by name. Confirm each entry
-against a block explorer (allo.info, Pera Explorer) and flip the flag before
-Mainnet for better narration. No rush — the fallback is safe by
-construction.
+```bash
+TX402_URL=https://tx402-production.up.railway.app DEEP_HEALTH_NETWORK=mainnet npm run smoke
+```
 
-## Extending
+Inspect the live x402 challenge:
 
-- Found a transaction this explains badly? Paste its raw indexer JSON into
-  `test/decoder.test.js` as a new fixture, then fix the code until it reads
-  well. That loop is how the product compounds.
-- Public AlgoNode endpoints need no API key; swap `MAINNET_INDEXER_URL` /
-  `TESTNET_INDEXER_URL` if you hit limits.
-- Grouped transactions (`group` field set) usually mean a swap or
-  multi-step DeFi action. Explaining the *whole group* rather than one leg
-  is the single biggest quality upgrade available — a natural v2.
+```bash
+node -e "const res=await fetch('https://tx402-production.up.railway.app/explain?txid=7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ'); const h=res.headers.get('payment-required'); const body=JSON.parse(Buffer.from(h,'base64').toString('utf8')); console.log(body.accepts?.[0]);"
+```
 
-## Review history
+Expected Mainnet fields:
 
-`Review.md` (gitignored, local only) has the full record of every review
-pass on this project — first-principles findings, live verification steps,
-and fix logs, newest section first. Read it before assuming something
-hasn't been checked; it almost certainly has been.
+- `network=algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=`
+- `asset=31566704`
+- `payTo=6RK3U3OF2B4Q773L4KC7OVFHQGU5I74NHRZ36QN6CVF527CKXAL62YR754`
+- `amount=5000`
+
+## Phase 4 Runbook
+
+Before switching any live service to Mainnet, verify the receiver:
+
+```bash
+MAINNET_PAY_TO=<mainnet-usdc-opted-in-address> npm run phase4:check
+```
+
+The receiver must exist on Mainnet and be opted into Mainnet USDC asset
+`31566704`. Only after that passes, set Railway variables:
+
+```bash
+railway variable set "NETWORK=algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=" --skip-deploys
+railway variable set "PAY_TO=<mainnet-usdc-opted-in-address>" --skip-deploys
+railway variable set "USDC_ASSET_ID=31566704" --skip-deploys
+railway up --detach --message "Phase 4 Mainnet config"
+```
+
+Phase 4 was completed with receiver:
+
+```text
+6RK3U3OF2B4Q773L4KC7OVFHQGU5I74NHRZ36QN6CVF527CKXAL62YR754
+```
+
+## Phase 5 Runbook
+
+Phase 5 spends real Mainnet USDC from a buyer wallet. Never paste mnemonics into
+chat or commit them.
+
+Public buyer address preflight:
+
+```bash
+BUYER_ADDRESS=<buyer-address> npm run phase5:check
+```
+
+Local signing-wallet preflight:
+
+```bash
+npm run phase5:check
+```
+
+The local file must be:
+
+```text
+.mainnet-buyer-wallet.local.json
+```
+
+Shape:
+
+```json
+{ "mnemonic": "..." }
+```
+
+Actual settlement requires an explicit real-money confirmation flag:
+
+```bash
+TX402_URL=https://tx402-production.up.railway.app CONFIRM_MAINNET_PAYMENT=1 npm run phase5:settle
+```
+
+First Mainnet settlement evidence:
+
+- buyer: `YSH3C6Q6QZ3JJN62SMFG3MOHOVOYSYSCQD4GFURYFPCGUFRJ2XF25GMRPY`
+- receiver: `6RK3U3OF2B4Q773L4KC7OVFHQGU5I74NHRZ36QN6CVF527CKXAL62YR754`
+- asset: Mainnet USDC `31566704`
+- amount: `0.005000` USDC
+- txid: `XA7HMRPUV4X2GWI4AAGUT5FKAVTNCQJ5ZMUNTVTBKG3GZMES27LA`
+- confirmed round: `63621097`
+
+Balance proof:
+
+- buyer: `1.000000 -> 0.995000` USDC
+- receiver: `3.350000 -> 3.355000` USDC
+
+## Monitoring
+
+Plain `/health` is liveness only. It does not prove `/explain` can reach the
+indexer or facilitator.
+
+Use:
+
+```http
+GET /health?deep=1&network=mainnet
+```
+
+The deep route is rate-limited and cached for 15 seconds to avoid turning
+monitoring traffic into an upstream amplifier.
+
+## Security Model
+
+- `summary`, `assetName`, `unit`, and `note` may contain attacker-controlled
+  on-chain strings. HTML consumers must escape them.
+- `/explain` is rate-limited per IP, with a stricter limit in free mode.
+- `txid` format validation happens before payment.
+- `PAY_TO` and `USDC_ASSET_ID` are startup-validated.
+- Wrong-network canonical USDC IDs cause startup failure.
+- Unverified protocol mappings are not narrated as fact.
+
+## Before Expanding Further
+
+- Verify app IDs in `src/knownApps.js` before flipping any `verified` flag.
+- If traffic grows, add a shared-store limiter before increasing replicas.
+- If indexer rate limits become visible, set `MAINNET_INDEXER_URL` to a paid
+  provider.
+- The biggest product upgrade is group-level transaction explanation instead of
+  explaining only one transaction leg.
+
+## Review History
+
+`Review.md` is gitignored and contains the detailed audit trail across review
+passes. Read it before assuming an issue has not been checked.
