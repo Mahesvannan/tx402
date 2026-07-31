@@ -54,7 +54,7 @@ in [`CLAUDE.md`](./CLAUDE.md).
 - [x] Phase 1 - core explainer, free and local
 - [x] Phase 2 - x402 payment middleware on Testnet, verified end-to-end
 - [x] Phase 3 - deploy to a public HTTPS host (persistent-process only - see `CLAUDE.md`)
-- [ ] Phase 4 - flip config to Mainnet
+- [x] Phase 4 - flip config to Mainnet
 - [ ] Phase 5 - first real Mainnet settlement
 - [ ] Phase 6 - example client, OpenAPI spec, optional MCP wrapper
 
@@ -67,6 +67,8 @@ public HTTPS domain.
 Current Phase 3 deployment:
 
 - `https://tx402-production.up.railway.app`
+- Live payment network: Mainnet
+- Mainnet USDC asset: `31566704`
 
 Render, Fly, or any Docker host are valid fallbacks. Do not use Vercel or
 other serverless/FaaS platforms for the current app shape.
