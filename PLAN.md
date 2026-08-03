@@ -42,7 +42,7 @@ Status: ready to publish — maintainer authentication required
 - Validate the package tarball locally, then publish to npm and the MCP
   Registry when the maintainer is authenticated.
 
-Prepared and validated: the `tx402-mcp@0.1.0` dry-run tarball contains only the
+Prepared and validated: the `tx402-mcp@0.1.1` dry-run tarball contains only the
 package README, executable, and package metadata; `server.json` passes the
 official MCP Registry JSON schema. Remaining external steps require `npm login`
 and MCP Registry GitHub authentication.

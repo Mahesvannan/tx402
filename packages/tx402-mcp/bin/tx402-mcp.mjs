@@ -70,7 +70,7 @@ function createFetch() {
 const tx402Fetch = createFetch();
 const server = new McpServer({
   name: 'tx402',
-  version: '0.1.0',
+  version: '0.1.1',
 });
 
 server.registerTool(
@@ -134,4 +134,3 @@ server.registerTool(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(`tx402 MCP server connected to ${SERVER} (${RESOLVED_NETWORK})`);
-

@@ -276,7 +276,9 @@ npm run mcp:pack
 
 Publishing requires an authenticated npm account, followed by MCP Registry
 authentication. The intended public package name is `tx402-mcp`; registry name
-and npm `mcpName` must both remain `io.github.mahesvannan/tx402`.
+and npm `mcpName` must both remain `io.github.Mahesvannan/tx402`. The GitHub
+namespace is case-sensitive and must match the account name returned by the
+registry login.
 
 It is read-only by default. Paid MCP mode requires:
 
