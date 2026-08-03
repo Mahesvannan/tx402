@@ -44,17 +44,18 @@ Status: complete
 
 Published and verified:
 
-- npm package: `tx402-mcp@0.1.1`, installable with `npx tx402-mcp`.
+- npm package: `tx402-mcp@0.2.0`, published under the `latest` tag and
+  installable with `npx tx402-mcp`.
 - A clean temporary installation completed the MCP `initialize` and
   `tools/list` handshake successfully.
 - Official MCP Registry server: `io.github.Mahesvannan/tx402`, version
-  `0.1.1`, status active and latest.
+  `0.2.0`, status active and latest.
 - The package tarball contains only the package README, executable, and package
   metadata; `server.json` passes the official MCP Registry JSON schema.
 
 ## 4. Broader product value
 
-Status: implementation complete — production deployment pending
+Status: complete
 
 - Explain complete Algorand atomic transaction groups.
 - Add a batch explanation endpoint.
@@ -71,10 +72,13 @@ Implemented in v0.2.0:
 - Tinyman, Folks Finance, and Pact app IDs are labeled only from exact entries
   verified against protocol-owned documentation or official SDKs; every label
   includes its verification source.
+- Version 0.2.0 is live at `https://tx402-production.up.railway.app`; production
+  smoke checks passed for health, discovery, analytics, and all paid routes.
 
 ## 5. Targeted distribution
 
-Status: implementation complete — external outreach posting pending
+Status: implementation and registry distribution complete — external outreach
+posting pending
 
 - Present tx402 to Algorand wallet, explorer, portfolio, tax, and compliance
   developers with copy-paste integrations.
@@ -95,7 +99,7 @@ Prepared:
 
 ## 6. Adoption analytics
 
-Status: implementation complete — production deployment pending
+Status: complete
 
 - Measure landing-page visits, demo calls, 402 challenges, successful paid
   calls, unique external payer addresses, and repeat usage.
@@ -112,3 +116,5 @@ Implemented:
   no cookies and stores no raw payment headers or wallet addresses.
 - Counters reset with the process; aggregate snapshots are emitted to deployment
   logs every 15 minutes for operational history.
+- The privacy-preserving analytics endpoint is live at
+  `https://tx402-production.up.railway.app/analytics`.
