@@ -77,7 +77,20 @@ if (process.env.TRUST_PROXY === '1') {
 app.use(helmet());
 app.use(express.json({ limit: '8kb' }));
 app.use(analyticsMiddleware);
-app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: false }));
+app.use(
+  express.static(path.join(__dirname, '..', 'public'), {
+    maxAge: '1h',
+    index: false,
+    setHeaders: (res, filePath) => {
+      // Facilitator dashboards and agent catalogs render these assets from
+      // another origin. Helmet's default same-origin CORP policy would make
+      // browsers reject that otherwise valid logo response.
+      if (['logo.svg', 'favicon.svg'].includes(path.basename(filePath))) {
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      }
+    },
+  })
+);
 
 // Minimal access log — method, path, status, latency, client IP. Enough for
 // production debugging and abuse investigation without pulling in a full
@@ -447,13 +460,20 @@ app.get(['/', '/index.html'], (_req, res) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>tx402 - Algorand transaction explanations paid with x402</title>
+  <title>tx402</title>
   <meta name="description" content="${PROJECT_DESCRIPTION}">
+  <meta name="theme-color" content="#0f172a">
+  <meta property="og:site_name" content="tx402">
   <meta property="og:title" content="tx402">
   <meta property="og:description" content="${PROJECT_DESCRIPTION}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="${PUBLIC_BASE_URL}">
   <meta property="og:image" content="${publicUrl('/logo.svg')}">
+  <meta property="og:image:alt" content="tx402 logo">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="tx402">
+  <meta name="twitter:description" content="${PROJECT_DESCRIPTION}">
+  <meta name="twitter:image" content="${publicUrl('/logo.svg')}">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="canonical" href="${PUBLIC_BASE_URL}">
   <style>

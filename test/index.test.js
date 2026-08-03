@@ -196,9 +196,19 @@ console.log('\nindex.js (free mode) — basic endpoints & hardening');
     const body = await res.text();
     assert.strictEqual(res.status, 200);
     assert.ok(body.includes('tx402'));
+    assert.ok(body.includes('<title>tx402</title>'));
+    assert.ok(body.includes('<meta property="og:site_name" content="tx402">'));
+    assert.ok(body.includes('<meta name="theme-color" content="#0f172a">'));
     assert.ok(body.includes('/.well-known/x402'));
     assert.ok(body.includes('Try it free'));
     assert.ok(body.includes('/demo.js'));
+  });
+
+  await test('/logo.svg can be embedded by external discovery dashboards', async () => {
+    const res = await fetch(`${baseUrl}/logo.svg`);
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.headers.get('cross-origin-resource-policy'), 'cross-origin');
+    assert.ok(res.headers.get('content-type')?.includes('image/svg+xml'));
   });
 
   await test('helmet security headers are present (L7)', async () => {
