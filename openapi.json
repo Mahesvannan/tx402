@@ -116,6 +116,53 @@
         }
       }
     },
+    "/.well-known/agent.json": {
+      "get": {
+        "summary": "Agent manifest",
+        "description": "Machine-readable metadata for agent marketplaces and x402 crawlers.",
+        "responses": {
+          "200": {
+            "description": "Agent manifest.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/x402": {
+      "get": {
+        "summary": "x402 resource manifest",
+        "description": "Machine-readable list of paid x402 resources exposed by tx402.",
+        "responses": {
+          "200": {
+            "description": "x402 manifest.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "summary": "LLM-readable service documentation",
+        "responses": {
+          "200": {
+            "description": "Plain-text documentation for agents and crawlers.",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/explain": {
       "get": {
         "summary": "Explain an Algorand transaction",

@@ -19,6 +19,10 @@ import {
   paymentsConfigured,
   explainPrice,
   resolvedNetwork,
+  paymentNetwork,
+  usdcAssetId,
+  payTo,
+  facilitatorUrl,
   checkFacilitatorHealth,
 } from './payments.js';
 import { rateLimit } from './rateLimit.js';
@@ -32,6 +36,13 @@ const OPENAPI_SPEC = JSON.parse(readFileSync(path.join(__dirname, '..', 'openapi
 const app = express();
 const PORT = process.env.PORT || 4021;
 const HOST = process.env.HOST || '0.0.0.0';
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://tx402-production.up.railway.app').replace(/\/+$/, '');
+const PROJECT_NAME = 'tx402';
+const PROJECT_SUMMARY =
+  'Plain-English Algorand transaction explanations, paid per call by AI agents using x402.';
+const PROJECT_DESCRIPTION =
+  'tx402 turns raw Algorand transaction IDs into deterministic plain-English explanations plus structured JSON fields. ' +
+  'The paid /explain endpoint uses x402 on Algorand Mainnet and settles USDC per call.';
 
 // Trusting X-Forwarded-For is only safe when a proxy you control is
 // guaranteed to overwrite whatever a client sends — otherwise a client can
@@ -46,6 +57,7 @@ if (process.env.TRUST_PROXY === '1') {
 
 app.use(helmet());
 app.use(express.json({ limit: '8kb' }));
+app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: false }));
 
 // Minimal access log — method, path, status, latency, client IP. Enough for
 // production debugging and abuse investigation without pulling in a full
@@ -110,8 +122,197 @@ app.use('/explain', (req, res, next) => {
 const discoveryLimiter = rateLimit({ windowMs: 60_000, max: 120 });
 app.use('/discovery', discoveryLimiter);
 
+function publicUrl(pathname) {
+  return `${PUBLIC_BASE_URL}${pathname}`;
+}
+
+function x402Manifest() {
+  return {
+    version: 1,
+    name: PROJECT_NAME,
+    description: PROJECT_DESCRIPTION,
+    resources: [publicUrl('/explain')],
+    endpoints: [
+      {
+        url: publicUrl('/explain'),
+        method: 'GET',
+        description:
+          'Explain one Algorand transaction in plain English and return normalized structured fields.',
+        input: {
+          txid: 'required Algorand transaction ID, 52 base32 characters',
+          network: 'optional: mainnet or testnet; defaults to mainnet',
+        },
+        price: paymentsConfigured ? explainPrice : null,
+        paymentProtocol: paymentsConfigured ? 'x402' : null,
+        accepts: paymentsConfigured
+          ? [
+              {
+                scheme: 'exact',
+                network: paymentNetwork,
+                asset: usdcAssetId,
+                assetSymbol: 'USDC',
+                payTo,
+              },
+            ]
+          : [],
+      },
+    ],
+    facilitator: facilitatorUrl,
+    openapi: publicUrl('/openapi.json'),
+    llmsTxt: publicUrl('/llms.txt'),
+  };
+}
+
+function agentManifest() {
+  return {
+    protocolVersion: '0.3.0',
+    name: PROJECT_NAME,
+    description: PROJECT_DESCRIPTION,
+    url: PUBLIC_BASE_URL,
+    preferredTransport: 'HTTP+JSON',
+    version: APP_VERSION,
+    documentationUrl: publicUrl('/llms.txt'),
+    iconUrl: publicUrl('/logo.svg'),
+    provider: {
+      organization: 'tx402',
+      contact: 'mahesvannan@gmail.com',
+      url: PUBLIC_BASE_URL,
+    },
+    capabilities: {
+      streaming: false,
+      pushNotifications: false,
+      stateTransitionHistory: false,
+    },
+    defaultInputModes: ['application/json'],
+    defaultOutputModes: ['application/json'],
+    skills: [
+      {
+        id: 'explain-algorand-transaction',
+        name: 'Explain an Algorand transaction',
+        description:
+          'Given an Algorand transaction ID, return a plain-English summary and structured fields including type, sender, receiver, amount, asset, fee, timestamp, note, and app-call context.',
+        tags: ['x402', 'algorand', 'transactions', 'USDC', 'agents'],
+        examples: [
+          `GET ${publicUrl('/explain')}?txid=7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ`,
+        ],
+      },
+    ],
+    x402: {
+      protocol: 'x402',
+      scheme: 'exact',
+      network: paymentNetwork,
+      currency: 'USDC',
+      asset: usdcAssetId,
+      payTo,
+      price: explainPrice,
+      facilitator: facilitatorUrl,
+      manifest: publicUrl('/.well-known/x402'),
+      openapi: publicUrl('/openapi.json'),
+      llmsTxt: publicUrl('/llms.txt'),
+      logoUrl: publicUrl('/logo.svg'),
+      note:
+        'Make a normal HTTP request. An unpaid /explain request returns HTTP 402 with payment requirements; sign client-side and retry with the payment header.',
+    },
+  };
+}
+
+function llmsTxt() {
+  return `# tx402
+
+> ${PROJECT_SUMMARY}
+
+Base URL: ${PUBLIC_BASE_URL}
+GitHub: https://github.com/Mahesvannan/tx402
+
+tx402 is a deterministic Algorand transaction explainer for AI agents and developer tools. It translates raw Algorand transaction data into a concise plain-English summary plus structured JSON fields. It does not use an LLM in the serving path.
+
+## Machine-readable surfaces
+
+- Discovery: ${publicUrl('/discovery')}
+- OpenAPI: ${publicUrl('/openapi.json')}
+- x402 manifest: ${publicUrl('/.well-known/x402')}
+- Agent manifest: ${publicUrl('/.well-known/agent.json')}
+- Logo: ${publicUrl('/logo.svg')}
+
+## Paid endpoint
+
+- GET ${publicUrl('/explain')}?txid={ALGORAND_TXID}&network=mainnet
+
+Price: ${explainPrice} USDC per successful explanation.
+Network: ${paymentNetwork}
+USDC asset ID: ${usdcAssetId}
+Receiver: ${payTo ?? 'not configured'}
+Facilitator: ${facilitatorUrl}
+
+Unpaid paid-route requests return HTTP 402 with x402 payment requirements. Buyer signing happens client-side; tx402 never receives private keys. Settlement happens through the facilitator after a successful response.
+
+## Output
+
+The response includes txid, network, summary, and details with type, sender, receiver, transfer amount, asset, fee, timestamp, note, and application context.
+
+Use tx402 when an agent needs to explain an Algorand transaction to a human without maintaining its own indexer decoder.`;
+}
+
 app.get('/openapi.json', (_req, res) => {
   res.json(OPENAPI_SPEC);
+});
+
+app.get(['/', '/index.html'], (_req, res) => {
+  res.type('html').send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tx402 - Algorand transaction explanations paid with x402</title>
+  <meta name="description" content="${PROJECT_DESCRIPTION}">
+  <meta property="og:title" content="tx402">
+  <meta property="og:description" content="${PROJECT_DESCRIPTION}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${PUBLIC_BASE_URL}">
+  <meta property="og:image" content="${publicUrl('/logo.svg')}">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="${PUBLIC_BASE_URL}">
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #040812; color: #f8fafc; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 32px; }
+    main { max-width: 880px; border: 1px solid #1f2a44; border-radius: 28px; padding: 44px; background: #0f172a; box-shadow: 0 24px 80px #0008; }
+    img { width: 80px; height: 80px; }
+    h1 { font-size: clamp(44px, 8vw, 84px); margin: 18px 0 8px; letter-spacing: -0.06em; }
+    p { color: #cbd5e1; font-size: 20px; line-height: 1.55; }
+    code, a { color: #2dd4bf; }
+    .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+    a { border: 1px solid #2dd4bf55; border-radius: 999px; padding: 10px 14px; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/logo.svg" alt="tx402 logo">
+    <h1>tx402</h1>
+    <p>${PROJECT_SUMMARY}</p>
+    <p>Call <code>GET /explain?txid=...</code>. Unpaid requests return HTTP 402 with x402 payment requirements. Paid calls settle USDC on Algorand and return a deterministic explanation plus structured JSON.</p>
+    <div class="links">
+      <a href="/discovery">Discovery</a>
+      <a href="/openapi.json">OpenAPI</a>
+      <a href="/.well-known/x402">x402 manifest</a>
+      <a href="/.well-known/agent.json">Agent manifest</a>
+      <a href="/llms.txt">llms.txt</a>
+      <a href="https://github.com/Mahesvannan/tx402">GitHub</a>
+    </div>
+  </main>
+</body>
+</html>`);
+});
+
+app.get('/.well-known/agent.json', (_req, res) => {
+  res.json(agentManifest());
+});
+
+app.get(['/.well-known/x402', '/.well-known/x402.json'], (_req, res) => {
+  res.json(x402Manifest());
+});
+
+app.get('/llms.txt', (_req, res) => {
+  res.type('text/plain').send(llmsTxt());
 });
 
 // F1: /health?deep=1 pings external services (indexer, facilitator) and — unlike

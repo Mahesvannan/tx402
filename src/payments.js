@@ -81,6 +81,14 @@ export const explainPrice = EXPLAIN_PRICE;
 /** 'mainnet' or 'testnet' — for status messages, never hardcode "Testnet" instead. */
 export const resolvedNetwork = RESOLVED_NETWORK;
 
+export const paymentNetwork = NETWORK;
+
+export const usdcAssetId = USDC_ASSET_ID;
+
+export const payTo = PAY_TO ?? null;
+
+export const facilitatorUrl = FACILITATOR_URL;
+
 /**
  * Readiness probe for the deep /health check (D3) — pings the facilitator's
  * own /health endpoint with a short timeout. Never throws: an unreachable

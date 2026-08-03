@@ -45,10 +45,14 @@ to a person.
 
 Public routes:
 
+- `GET /` - landing page with service metadata links
 - `GET /health` - process liveness
 - `GET /health?deep=1&network=mainnet` - readiness check for upstream services
 - `GET /discovery` - machine-readable service description and pricing metadata
 - `GET /openapi.json` - OpenAPI 3.1 specification
+- `GET /.well-known/agent.json` - agent marketplace manifest
+- `GET /.well-known/x402` - x402 resource manifest
+- `GET /llms.txt` - agent-readable documentation
 - `GET /explain?txid=...&network=mainnet` - paid transaction explanation
 
 `/explain` is priced at `$0.005` per call. Production currently accepts Mainnet
@@ -120,6 +124,12 @@ OpenAPI:
 
 - [openapi.json](./openapi.json)
 - `https://tx402-production.up.railway.app/openapi.json`
+
+Agent marketplace metadata:
+
+- `https://tx402-production.up.railway.app/.well-known/agent.json`
+- `https://tx402-production.up.railway.app/.well-known/x402`
+- `https://tx402-production.up.railway.app/llms.txt`
 
 MCP wrapper:
 

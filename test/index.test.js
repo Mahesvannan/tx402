@@ -131,6 +131,39 @@ console.log('\nindex.js (free mode) — basic endpoints & hardening');
     assert.ok(body.paths['/explain'], 'OpenAPI spec should document /explain');
   });
 
+  await test('/.well-known/agent.json returns agent marketplace metadata', async () => {
+    const res = await fetch(`${baseUrl}/.well-known/agent.json`);
+    const body = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.name, 'tx402');
+    assert.ok(body.skills[0].tags.includes('x402'));
+    assert.ok(body.x402.openapi.endsWith('/openapi.json'));
+  });
+
+  await test('/.well-known/x402 returns resource manifest', async () => {
+    const res = await fetch(`${baseUrl}/.well-known/x402`);
+    const body = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.name, 'tx402');
+    assert.ok(body.resources.includes('https://tx402-production.up.railway.app/explain'));
+  });
+
+  await test('/llms.txt returns agent-readable documentation', async () => {
+    const res = await fetch(`${baseUrl}/llms.txt`);
+    const body = await res.text();
+    assert.strictEqual(res.status, 200);
+    assert.ok(body.includes('# tx402'));
+    assert.ok(body.includes('/.well-known/agent.json'));
+  });
+
+  await test('/ serves a landing page with metadata links', async () => {
+    const res = await fetch(`${baseUrl}/`);
+    const body = await res.text();
+    assert.strictEqual(res.status, 200);
+    assert.ok(body.includes('tx402'));
+    assert.ok(body.includes('/.well-known/x402'));
+  });
+
   await test('helmet security headers are present (L7)', async () => {
     const res = await fetch(`${baseUrl}/health`);
     assert.ok(res.headers.get('x-content-type-options'), 'X-Content-Type-Options missing');

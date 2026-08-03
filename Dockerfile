@@ -7,6 +7,7 @@ RUN npm ci --omit=dev
 
 COPY src ./src
 COPY openapi.json ./
+COPY public ./public
 
 ENV NODE_ENV=production
 EXPOSE 4021

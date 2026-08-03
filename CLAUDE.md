@@ -38,6 +38,7 @@ gitignored.
 | `src/knownApps.js` | App and asset label cache; protocol labels must be verified before use |
 | `src/payments.js` | x402 payment gate configuration; no private keys |
 | `src/rateLimit.js` | In-memory fixed-window per-IP limiter |
+| `public/logo.svg` / `public/favicon.svg` | Public marketplace/landing-page visual assets |
 | `scripts/smoke-phase3.mjs` | Public route deployment smoke test |
 | `scripts/check-phase4-mainnet.mjs` | Mainnet receiver preflight |
 | `scripts/check-phase5-buyer.mjs` | Mainnet buyer balance and opt-in preflight |
@@ -222,8 +223,17 @@ Phase 6 artifacts:
 
 - `openapi.json`
 - `GET /openapi.json`
+- `GET /`
+- `GET /.well-known/agent.json`
+- `GET /.well-known/x402`
+- `GET /llms.txt`
 - `examples/node-client.mjs`
 - `mcp/tx402-mcp.mjs`
+
+The well-known routes and `llms.txt` are intentionally public and unauthenticated.
+They exist so x402 dashboards, agent marketplaces, and coding agents can identify
+the product, paid endpoint, pricing, network, facilitator, OpenAPI schema, and
+operator contact without scraping README text.
 
 The example client is read-only by default:
 
