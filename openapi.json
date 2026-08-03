@@ -163,6 +163,50 @@
         }
       }
     },
+    "/demo": {
+      "get": {
+        "summary": "Try a free transaction explanation",
+        "description": "Returns a complete explanation for one of two fixed Algorand Mainnet examples. No wallet or payment is required, and arbitrary transaction IDs are not accepted.",
+        "parameters": [
+          {
+            "name": "example",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["algo", "usdc"],
+              "default": "algo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Free example transaction explanation.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DemoResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown demo example.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/explain": {
       "get": {
         "summary": "Explain an Algorand transaction",
@@ -329,6 +373,20 @@
           "summary": { "type": "string" },
           "details": { "$ref": "#/components/schemas/DecodedTransaction" }
         }
+      },
+      "DemoResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ExplainResponse" },
+          {
+            "type": "object",
+            "required": ["demo", "example", "label"],
+            "properties": {
+              "demo": { "type": "boolean", "const": true },
+              "example": { "type": "string", "enum": ["algo", "usdc"] },
+              "label": { "type": "string" }
+            }
+          }
+        ]
       },
       "DecodedTransaction": {
         "type": "object",

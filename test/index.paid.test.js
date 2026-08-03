@@ -43,6 +43,7 @@ const MANAGED_KEYS = [
   'FACILITATOR_URL',
   'EXPLAIN_PRICE_USD',
   'TRUST_PROXY',
+  'PUBLIC_BASE_URL',
 ];
 
 async function waitForServer(baseUrl, retries = 30) {
@@ -99,10 +100,33 @@ await test('malformed txid returns 400, not 402', async () => {
   assert.strictEqual(res.status, 400);
 });
 
+await test('invalid network returns 400 before the payment gate', async () => {
+  const res = await fetch(`${baseUrl}/explain?txid=${WELL_FORMED_TXID}&network=bogus`);
+  assert.strictEqual(res.status, 400);
+  assert.strictEqual(res.headers.get('payment-required'), null);
+});
+
 await test('a well-formed txid correctly reaches the payment gate (402)', async () => {
   const res = await fetch(`${baseUrl}/explain?txid=${WELL_FORMED_TXID}`);
   assert.strictEqual(res.status, 402);
-  assert.ok(res.headers.get('payment-required'), 'PAYMENT-REQUIRED header should be present');
+  const header = res.headers.get('payment-required');
+  assert.ok(header, 'PAYMENT-REQUIRED header should be present');
+  const challenge = JSON.parse(Buffer.from(header, 'base64').toString('utf8'));
+  assert.strictEqual(challenge.resource.description.includes('Plain-English'), true);
+  assert.strictEqual(challenge.resource.mimeType, 'application/json');
+  assert.strictEqual(challenge.resource.serviceName, 'tx402');
+  assert.ok(challenge.resource.tags.includes('algorand'));
+  assert.ok(challenge.extensions?.bazaar, 'Bazaar discovery extension should be present');
+  assert.strictEqual(
+    challenge.extensions.bazaar.info.input.queryParams.txid,
+    '7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ'
+  );
+});
+
+await test('/demo stays free when payments are configured', async () => {
+  const res = await fetch(`${baseUrl}/demo?example=algo`);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.headers.get('payment-required'), null);
 });
 
 await test('/health?deep=1 checks the facilitator too when payments are configured (D3)', async () => {

@@ -17,6 +17,10 @@ import { paymentMiddleware } from '@x402/express';
 import { x402ResourceServer, HTTPFacilitatorClient } from '@x402/core/server';
 import { ExactAvmScheme } from '@x402/avm/exact/server';
 import {
+  bazaarResourceServerExtension,
+  declareDiscoveryExtension,
+} from '@x402/extensions/bazaar';
+import {
   ALGORAND_TESTNET_CAIP2,
   USDC_TESTNET_ASA_ID,
   USDC_MAINNET_ASA_ID,
@@ -73,6 +77,60 @@ if (PAY_TO && !isValidAlgorandAddress(PAY_TO)) {
 }
 
 const EXPLAIN_PRICE = process.env.EXPLAIN_PRICE_USD || '$0.005';
+const PUBLIC_BASE_URL = (
+  process.env.PUBLIC_BASE_URL || 'https://tx402-production.up.railway.app'
+).replace(/\/+$/, '');
+const EXAMPLE_TXID = '7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ';
+
+const EXPLAIN_DISCOVERY_EXTENSION = declareDiscoveryExtension({
+  input: {
+    txid: EXAMPLE_TXID,
+    network: 'mainnet',
+  },
+  inputSchema: {
+    type: 'object',
+    properties: {
+      txid: {
+        type: 'string',
+        pattern: '^[A-Z2-7]{52}$',
+        description: 'Algorand transaction ID to explain.',
+      },
+      network: {
+        type: 'string',
+        enum: ['mainnet', 'testnet'],
+        default: 'mainnet',
+        description: 'Algorand network containing the transaction.',
+      },
+    },
+    required: ['txid'],
+    additionalProperties: false,
+  },
+  output: {
+    example: {
+      txid: EXAMPLE_TXID,
+      network: 'mainnet',
+      summary:
+        'On June 15, 2019, wallet I3345F…EUBEGU sent 0.10 ALGO to ALGORA…N5DNAU. Paid 0.001 ALGO in fees.',
+      details: {
+        type: 'pay',
+        sender: 'I3345FUQQ2GRBHFZQPLYQQX5HJMMRZMABCHRLWV6RCJYC6OO4MOLEUBEGU',
+        receiver: 'ALGORANDHQ6MABCU6I6Y4RTPV4KQ5V4O4JAHF7T7VQ6W5GZB7N5DNAU',
+        transfer: { amount: '0.10', assetId: 0, unit: 'ALGO' },
+      },
+    },
+    schema: {
+      type: 'object',
+      properties: {
+        txid: { type: 'string' },
+        network: { type: 'string', enum: ['mainnet', 'testnet'] },
+        summary: { type: 'string' },
+        details: { type: 'object', additionalProperties: true },
+      },
+      required: ['txid', 'network', 'summary', 'details'],
+      additionalProperties: false,
+    },
+  },
+});
 
 export const paymentsConfigured = Boolean(PAY_TO);
 
@@ -118,6 +176,7 @@ export function buildPaymentGate() {
   const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
   const server = new x402ResourceServer(facilitatorClient);
   server.register(NETWORK, new ExactAvmScheme());
+  server.registerExtension(bazaarResourceServerExtension);
 
   const routes = {
     'GET /explain': {
@@ -130,6 +189,12 @@ export function buildPaymentGate() {
       },
       description:
         'Plain-English explanation of an Algorand transaction, with normalised structured fields.',
+      resource: `${PUBLIC_BASE_URL}/explain`,
+      mimeType: 'application/json',
+      serviceName: 'tx402',
+      tags: ['algorand', 'transaction', 'explainer', 'x402', 'USDC'],
+      iconUrl: `${PUBLIC_BASE_URL}/logo.svg`,
+      extensions: EXPLAIN_DISCOVERY_EXTENSION,
     },
   };
 

@@ -43,6 +43,16 @@ const PROJECT_SUMMARY =
 const PROJECT_DESCRIPTION =
   'tx402 turns raw Algorand transaction IDs into deterministic plain-English explanations plus structured JSON fields. ' +
   'The paid /explain endpoint uses x402 on Algorand Mainnet and settles USDC per call.';
+const DEMO_EXAMPLES = Object.freeze({
+  algo: Object.freeze({
+    label: 'ALGO payment',
+    txid: '7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ',
+  }),
+  usdc: Object.freeze({
+    label: 'USDC asset transfer',
+    txid: '7DSJA4HZ2BKHHEDO7FHEOMQ5GXUFIXSIYXPIONGLH7HTV2LHBTUQ',
+  }),
+});
 
 // Trusting X-Forwarded-For is only safe when a proxy you control is
 // guaranteed to overwrite whatever a client sends — otherwise a client can
@@ -116,11 +126,24 @@ app.use('/explain', (req, res, next) => {
       error: 'Invalid txid: expected 52 base32 characters (A-Z, 2-7).',
     });
   }
+  const network = (getQueryString(req, 'network') || 'mainnet').trim();
+  if (network !== 'mainnet' && network !== 'testnet') {
+    return res.status(400).json({
+      error: 'Invalid network: use "mainnet" or "testnet".',
+    });
+  }
   next();
 });
 
 const discoveryLimiter = rateLimit({ windowMs: 60_000, max: 120 });
 app.use('/discovery', discoveryLimiter);
+
+const demoLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  message: 'Demo rate limit exceeded. Try again shortly.',
+});
+app.use('/demo', demoLimiter);
 
 function publicUrl(pathname) {
   return `${PUBLIC_BASE_URL}${pathname}`;
@@ -155,6 +178,18 @@ function x402Manifest() {
               },
             ]
           : [],
+      },
+      {
+        url: publicUrl('/demo'),
+        method: 'GET',
+        description:
+          'Return a complete tx402 explanation for an allowlisted Mainnet example without a wallet or payment.',
+        input: {
+          example: 'optional: algo or usdc; defaults to algo',
+        },
+        price: null,
+        paymentProtocol: null,
+        accepts: [],
       },
     ],
     facilitator: facilitatorUrl,
@@ -196,6 +231,14 @@ function agentManifest() {
           `GET ${publicUrl('/explain')}?txid=7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ`,
         ],
       },
+      {
+        id: 'try-free-demo',
+        name: 'Try a free transaction explanation',
+        description:
+          'Return a complete tx402 explanation for an allowlisted Mainnet example without a wallet or payment.',
+        tags: ['algorand', 'transactions', 'demo'],
+        examples: [`GET ${publicUrl('/demo')}?example=algo`],
+      },
     ],
     x402: {
       protocol: 'x402',
@@ -233,6 +276,13 @@ tx402 is a deterministic Algorand transaction explainer for AI agents and develo
 - x402 manifest: ${publicUrl('/.well-known/x402')}
 - Agent manifest: ${publicUrl('/.well-known/agent.json')}
 - Logo: ${publicUrl('/logo.svg')}
+
+## Free demo
+
+- GET ${publicUrl('/demo')}?example=algo
+- GET ${publicUrl('/demo')}?example=usdc
+
+The demo needs no wallet or payment and only accepts those fixed examples. Use it to inspect the response shape before paying for an arbitrary transaction.
 
 ## Paid endpoint
 
@@ -275,13 +325,20 @@ app.get(['/', '/index.html'], (_req, res) => {
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #040812; color: #f8fafc; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 32px; }
-    main { max-width: 880px; border: 1px solid #1f2a44; border-radius: 28px; padding: 44px; background: #0f172a; box-shadow: 0 24px 80px #0008; }
+    main { width: min(880px, 100%); box-sizing: border-box; border: 1px solid #1f2a44; border-radius: 28px; padding: 44px; background: #0f172a; box-shadow: 0 24px 80px #0008; }
     img { width: 80px; height: 80px; }
     h1 { font-size: clamp(44px, 8vw, 84px); margin: 18px 0 8px; letter-spacing: -0.06em; }
     p { color: #cbd5e1; font-size: 20px; line-height: 1.55; }
     code, a { color: #2dd4bf; }
     .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
     a { border: 1px solid #2dd4bf55; border-radius: 999px; padding: 10px 14px; text-decoration: none; }
+    .demo { margin-top: 32px; border-top: 1px solid #1f2a44; padding-top: 28px; }
+    .demo h2 { margin: 0 0 8px; font-size: 26px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; }
+    select, button { border: 1px solid #2dd4bf88; border-radius: 10px; padding: 11px 14px; background: #07111f; color: #f8fafc; font: inherit; }
+    button { cursor: pointer; background: #2dd4bf; color: #042f2e; font-weight: 700; }
+    button:disabled { cursor: wait; opacity: .65; }
+    pre { min-height: 110px; margin: 16px 0 0; padding: 16px; overflow: auto; border-radius: 14px; background: #040812; color: #cbd5e1; white-space: pre-wrap; word-break: break-word; }
   </style>
 </head>
 <body>
@@ -290,7 +347,20 @@ app.get(['/', '/index.html'], (_req, res) => {
     <h1>tx402</h1>
     <p>${PROJECT_SUMMARY}</p>
     <p>Call <code>GET /explain?txid=...</code>. Unpaid requests return HTTP 402 with x402 payment requirements. Paid calls settle USDC on Algorand and return a deterministic explanation plus structured JSON.</p>
+    <section class="demo" aria-labelledby="demo-title">
+      <h2 id="demo-title">Try it free</h2>
+      <p>No wallet or payment required. Demo requests use fixed Mainnet transactions.</p>
+      <div class="controls">
+        <select id="demo-example" aria-label="Demo transaction type">
+          <option value="algo">ALGO payment</option>
+          <option value="usdc">USDC asset transfer</option>
+        </select>
+        <button id="demo-button" type="button">Explain transaction</button>
+      </div>
+      <pre id="demo-output" aria-live="polite">Choose an example and run the free demo.</pre>
+    </section>
     <div class="links">
+      <a href="/demo?example=algo">Demo API</a>
       <a href="/discovery">Discovery</a>
       <a href="/openapi.json">OpenAPI</a>
       <a href="/.well-known/x402">x402 manifest</a>
@@ -299,6 +369,7 @@ app.get(['/', '/index.html'], (_req, res) => {
       <a href="https://github.com/Mahesvannan/tx402">GitHub</a>
     </div>
   </main>
+  <script src="/demo.js" defer></script>
 </body>
 </html>`);
 });
@@ -313,6 +384,67 @@ app.get(['/.well-known/x402', '/.well-known/x402.json'], (_req, res) => {
 
 app.get('/llms.txt', (_req, res) => {
   res.type('text/plain').send(llmsTxt());
+});
+
+async function explainTransaction(txid, network) {
+  const raw = await fetchTransaction(txid, network);
+
+  let asset = null;
+  if (raw['tx-type'] === 'axfer') {
+    const assetId = raw['asset-transfer-transaction']?.['asset-id'];
+    asset = await fetchAsset(assetId, network);
+  }
+
+  const decoded = decodeTransaction(raw, { asset });
+  return {
+    txid: decoded.txid,
+    network,
+    summary: narrate(decoded),
+    details: decoded,
+  };
+}
+
+// Demo transactions are immutable on-chain, so cache each generated result for
+// the process lifetime. The promise itself is cached to deduplicate concurrent
+// first requests; failures are removed so a temporary indexer outage can retry.
+const demoCache = new Map();
+function getDemoExplanation(exampleId) {
+  const existing = demoCache.get(exampleId);
+  if (existing) return existing;
+
+  const example = DEMO_EXAMPLES[exampleId];
+  const pending = explainTransaction(example.txid, 'mainnet').catch((err) => {
+    demoCache.delete(exampleId);
+    throw err;
+  });
+  demoCache.set(exampleId, pending);
+  return pending;
+}
+
+app.get('/demo', async (req, res) => {
+  const exampleId = (getQueryString(req, 'example') || 'algo').trim().toLowerCase();
+  const example = DEMO_EXAMPLES[exampleId];
+  if (!example) {
+    return res.status(400).json({
+      error: `Unknown demo example. Use one of: ${Object.keys(DEMO_EXAMPLES).join(', ')}.`,
+    });
+  }
+
+  try {
+    const explanation = await getDemoExplanation(exampleId);
+    res.json({
+      demo: true,
+      example: exampleId,
+      label: example.label,
+      ...explanation,
+    });
+  } catch (err) {
+    if (err instanceof HttpError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Unexpected demo error:', err);
+    res.status(500).json({ error: 'Internal error while generating the demo.' });
+  }
 });
 
 // F1: /health?deep=1 pings external services (indexer, facilitator) and — unlike
@@ -448,6 +580,16 @@ app.get('/discovery', (_req, res) => {
         price: paymentsConfigured ? explainPrice : null,
         paymentProtocol: paymentsConfigured ? 'x402' : null,
       },
+      {
+        path: '/demo',
+        method: 'GET',
+        params: {
+          example: 'optional — "algo" (default) or "usdc"',
+        },
+        priced: false,
+        price: null,
+        paymentProtocol: null,
+      },
     ],
     deterministic: true,
     llmInServingPath: false,
@@ -460,24 +602,7 @@ app.get('/explain', async (req, res) => {
   const network = (getQueryString(req, 'network') || 'mainnet').trim();
 
   try {
-    const raw = await fetchTransaction(txid, network);
-
-    // Only asset transfers need a metadata lookup; everything else is pure CPU.
-    let asset = null;
-    if (raw['tx-type'] === 'axfer') {
-      const assetId = raw['asset-transfer-transaction']?.['asset-id'];
-      asset = await fetchAsset(assetId, network);
-    }
-
-    const decoded = decodeTransaction(raw, { asset });
-    const summary = narrate(decoded);
-
-    res.json({
-      txid: decoded.txid,
-      network,
-      summary,
-      details: decoded,
-    });
+    res.json(await explainTransaction(txid, network));
   } catch (err) {
     if (err instanceof HttpError) {
       return res.status(err.status).json({ error: err.message });

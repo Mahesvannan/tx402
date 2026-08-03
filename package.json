@@ -15,8 +15,12 @@
     "phase5:check": "node scripts/check-phase5-buyer.mjs",
     "phase5:settle": "node scripts/pay-and-explain.mjs",
     "example:client": "node examples/node-client.mjs",
-    "mcp": "node mcp/tx402-mcp.mjs"
+    "mcp": "node packages/tx402-mcp/bin/tx402-mcp.mjs",
+    "mcp:pack": "npm pack --dry-run --workspace tx402-mcp"
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -24,6 +28,7 @@
     "@x402/avm": "^2.19.0",
     "@x402/core": "^2.19.0",
     "@x402/express": "^2.19.0",
+    "@x402/extensions": "^2.19.0",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "helmet": "^8.3.0"

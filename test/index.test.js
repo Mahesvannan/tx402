@@ -50,6 +50,7 @@ const MANAGED_KEYS = [
   'FACILITATOR_URL',
   'EXPLAIN_PRICE_USD',
   'TRUST_PROXY',
+  'PUBLIC_BASE_URL',
 ];
 
 let nextPort = 4500; // distinct from the real dev port (4021) and from each other per group
@@ -129,6 +130,23 @@ console.log('\nindex.js (free mode) — basic endpoints & hardening');
     assert.strictEqual(res.status, 200);
     assert.strictEqual(body.openapi, '3.1.0');
     assert.ok(body.paths['/explain'], 'OpenAPI spec should document /explain');
+    assert.ok(body.paths['/demo'], 'OpenAPI spec should document /demo');
+  });
+
+  await test('/demo returns a free allowlisted Mainnet explanation', async () => {
+    const res = await fetch(`${baseUrl}/demo?example=algo`);
+    const body = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.demo, true);
+    assert.strictEqual(body.example, 'algo');
+    assert.strictEqual(body.network, 'mainnet');
+    assert.ok(body.summary);
+    assert.ok(body.details);
+  });
+
+  await test('/demo rejects transactions outside its allowlist', async () => {
+    const res = await fetch(`${baseUrl}/demo?example=arbitrary`);
+    assert.strictEqual(res.status, 400);
   });
 
   await test('/.well-known/agent.json returns agent marketplace metadata', async () => {
@@ -162,6 +180,8 @@ console.log('\nindex.js (free mode) — basic endpoints & hardening');
     assert.strictEqual(res.status, 200);
     assert.ok(body.includes('tx402'));
     assert.ok(body.includes('/.well-known/x402'));
+    assert.ok(body.includes('Try it free'));
+    assert.ok(body.includes('/demo.js'));
   });
 
   await test('helmet security headers are present (L7)', async () => {

@@ -13,6 +13,12 @@ Give it a transaction ID, get back a human-readable sentence plus structured
 fields with scaled amounts, asset names, decoded notes, fees, timestamps, and
 counterparties.
 
+Try the free fixed-transaction demo without a wallet:
+
+```text
+https://tx402-production.up.railway.app/demo?example=algo
+```
+
 ```http
 GET /explain?txid=7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ
 ```
@@ -53,6 +59,7 @@ Public routes:
 - `GET /.well-known/agent.json` - agent marketplace manifest
 - `GET /.well-known/x402` - x402 resource manifest
 - `GET /llms.txt` - agent-readable documentation
+- `GET /demo?example=algo|usdc` - free allowlisted Mainnet examples
 - `GET /explain?txid=...&network=mainnet` - paid transaction explanation
 
 `/explain` is priced at `$0.005` per call. Production currently accepts Mainnet
@@ -131,15 +138,28 @@ Agent marketplace metadata:
 - `https://tx402-production.up.railway.app/.well-known/x402`
 - `https://tx402-production.up.railway.app/llms.txt`
 
+The paid route also declares the standard x402 Bazaar extension, including its
+input/output schemas, service metadata, and example request. Facilitators can
+index that metadata after a successful settlement.
+
 MCP wrapper:
 
 ```bash
 npm run mcp
 ```
 
+After the public npm package is published, agents can install it without
+cloning this repository:
+
+```bash
+npx tx402-mcp
+```
+
 By default the MCP wrapper is read-only and returns x402 payment requirements
 for paid calls. To let it pay from a local wallet, set
 `TX402_MCP_ENABLE_PAYMENTS=1` and `CONFIRM_MAINNET_PAYMENT=1`.
+
+The six-part adoption roadmap is tracked in [PLAN.md](./PLAN.md).
 
 ## Submission Assets
 

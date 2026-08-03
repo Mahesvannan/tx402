@@ -1,0 +1,43 @@
+{
+  "name": "tx402-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for plain-English Algorand transaction explanations paid per call with x402.",
+  "type": "module",
+  "bin": {
+    "tx402-mcp": "bin/tx402-mcp.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@x402/avm": "^2.19.0",
+    "@x402/fetch": "^2.19.0",
+    "algosdk": "^3.6.0",
+    "dotenv": "^17.4.2",
+    "zod": "^3.25.76"
+  },
+  "mcpName": "io.github.mahesvannan/tx402",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mahesvannan/tx402.git",
+    "directory": "packages/tx402-mcp"
+  },
+  "homepage": "https://tx402-production.up.railway.app",
+  "bugs": {
+    "url": "https://github.com/Mahesvannan/tx402/issues"
+  },
+  "keywords": [
+    "mcp",
+    "x402",
+    "algorand",
+    "transaction",
+    "agent"
+  ],
+  "license": "MIT"
+}
+

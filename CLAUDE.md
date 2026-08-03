@@ -39,13 +39,17 @@ gitignored.
 | `src/payments.js` | x402 payment gate configuration; no private keys |
 | `src/rateLimit.js` | In-memory fixed-window per-IP limiter |
 | `public/logo.svg` / `public/favicon.svg` | Public marketplace/landing-page visual assets |
+| `public/demo.js` | CSP-compatible landing-page client for the free allowlisted demo |
 | `scripts/smoke-phase3.mjs` | Public route deployment smoke test |
 | `scripts/check-phase4-mainnet.mjs` | Mainnet receiver preflight |
 | `scripts/check-phase5-buyer.mjs` | Mainnet buyer balance and opt-in preflight |
 | `scripts/pay-and-explain.mjs` | x402 buyer client for Testnet or confirmed Mainnet payment |
 | `examples/node-client.mjs` | Public client example; read-only by default, optional paid mode |
-| `mcp/tx402-mcp.mjs` | MCP stdio wrapper; read-only by default, optional paid mode |
+| `mcp/tx402-mcp.mjs` | Backwards-compatible entry point for the packaged MCP wrapper |
+| `packages/tx402-mcp/` | Publishable `tx402-mcp` npm package and stdio implementation |
+| `server.json` | Official MCP Registry metadata for `io.github.mahesvannan/tx402` |
 | `openapi.json` | OpenAPI 3.1 document, also served at `/openapi.json` |
+| `PLAN.md` | Adoption roadmap: discovery, demo, packaging, product, distribution, analytics |
 | `test/*.test.js` | No runner dependency; each file is a standalone Node process |
 | `Dockerfile` / `Procfile` / `.dockerignore` | Persistent-process deployment artifacts |
 | `Review.md` | Gitignored audit/review history; read before assuming prior checks were not done |
@@ -235,6 +239,17 @@ They exist so x402 dashboards, agent marketplaces, and coding agents can identif
 the product, paid endpoint, pricing, network, facilitator, OpenAPI schema, and
 operator contact without scraping README text.
 
+The route configuration in `src/payments.js` must also carry the standard
+`extensions.bazaar` payload. Static manifests do not replace discovery metadata
+inside the HTTP 402 challenge. Keep the Bazaar input/output schemas aligned with
+`openapi.json`, and register `bazaarResourceServerExtension` before constructing
+the payment middleware.
+
+`GET /demo` is intentionally free but only accepts the fixed `algo` and `usdc`
+example IDs. Never accept an arbitrary txid there: that would turn it into a
+free indexer proxy. Demo results are cached for the process lifetime because
+confirmed Mainnet transactions are immutable.
+
 The example client is read-only by default:
 
 ```bash
@@ -252,6 +267,16 @@ The MCP wrapper runs over stdio:
 ```bash
 npm run mcp
 ```
+
+Package validation before publishing:
+
+```bash
+npm run mcp:pack
+```
+
+Publishing requires an authenticated npm account, followed by MCP Registry
+authentication. The intended public package name is `tx402-mcp`; registry name
+and npm `mcpName` must both remain `io.github.mahesvannan/tx402`.
 
 It is read-only by default. Paid MCP mode requires:
 
