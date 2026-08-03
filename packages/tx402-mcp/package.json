@@ -1,7 +1,7 @@
 {
   "name": "tx402-mcp",
-  "version": "0.1.1",
-  "description": "MCP server for plain-English Algorand transaction explanations paid per call with x402.",
+  "version": "0.2.0",
+  "description": "MCP server for Algorand transaction, atomic-group, batch, and account-activity explanations paid per call with x402.",
   "type": "module",
   "bin": {
     "tx402-mcp": "bin/tx402-mcp.mjs"

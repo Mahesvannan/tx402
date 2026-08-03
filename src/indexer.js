@@ -102,13 +102,40 @@ export async function fetchTransaction(txid, network = 'mainnet') {
   return body.transaction;
 }
 
+/** Fetch every outer transaction in the atomic group containing a transaction. */
+export async function fetchTransactionGroup(groupId, network = 'mainnet') {
+  if (!groupId) throw new HttpError(400, 'The transaction is not part of an atomic group.');
+  const query = new URLSearchParams({ 'group-id': groupId });
+  const body = await getJson(`${indexerUrl(network)}/v2/transactions?${query}`);
+  const transactions = body?.transactions ?? [];
+  if (transactions.length === 0) {
+    throw new HttpError(404, 'Atomic transaction group not found on this network.');
+  }
+  return transactions.sort(
+    (a, b) => (a['intra-round-offset'] ?? 0) - (b['intra-round-offset'] ?? 0)
+  );
+}
+
+/** Fetch recent transactions involving an account, newest first. */
+export async function fetchAccountTransactions(address, network = 'mainnet', limit = 25) {
+  const boundedLimit = Math.max(1, Math.min(Number(limit) || 25, 50));
+  const query = new URLSearchParams({ limit: String(boundedLimit) });
+  const body = await getJson(
+    `${indexerUrl(network)}/v2/accounts/${encodeURIComponent(address)}/transactions?${query}`
+  );
+  return (body?.transactions ?? []).sort((a, b) => {
+    const roundDiff = (b['confirmed-round'] ?? 0) - (a['confirmed-round'] ?? 0);
+    return roundDiff || (b['intra-round-offset'] ?? 0) - (a['intra-round-offset'] ?? 0);
+  });
+}
+
 /**
  * Resolve an ASA id to { name, unitName, decimals }.
  * Checks the local cache first, then falls back to the indexer.
  * Never throws — an unknown asset degrades gracefully to a generic label.
  */
 export async function fetchAsset(assetId, network = 'mainnet') {
-  const cached = lookupAsset(assetId);
+  const cached = lookupAsset(assetId, network);
   if (cached) return cached;
 
   try {

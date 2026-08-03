@@ -36,6 +36,22 @@ async function getJson(pathname) {
   return { url, res, body };
 }
 
+async function postJson(pathname, payload) {
+  const res = await fetch(`${SERVER}${pathname}`, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let body;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    fail(`${pathname} returned non-JSON response (${res.status}): ${text.slice(0, 300)}`);
+  }
+  return { res, body };
+}
+
 console.log(`Smoke testing ${SERVER}`);
 
 const health = await getJson('/health');
@@ -55,6 +71,11 @@ if (!Array.isArray(discovery.body?.routes) || discovery.body.routes.length === 0
 }
 const explainRoute = discovery.body.routes.find((route) => route.path === '/explain');
 if (!explainRoute) fail('/discovery did not describe /explain');
+for (const pathname of ['/group', '/batch', '/account/activity']) {
+  if (!discovery.body.routes.some((route) => route.path === pathname)) {
+    fail(`/discovery did not describe ${pathname}`);
+  }
+}
 console.log(
   `PASS /discovery -> ${discovery.res.status} (priced=${Boolean(explainRoute.priced)}${explainRoute.price ? `, price=${explainRoute.price}` : ''})`
 );
@@ -71,5 +92,20 @@ if (explainRoute.priced) {
   }
   console.log(`PASS /explain free-mode probe -> ${explain.res.status}`);
 }
+
+if (explainRoute.priced) {
+  const group = await getJson(`/group?txid=${encodeURIComponent(TXID)}`);
+  if (group.res.status !== 402) fail(`/group should challenge with 402, got ${group.res.status}`);
+
+  const batch = await postJson('/batch', { txids: [TXID], network: DEEP_NETWORK });
+  if (batch.res.status !== 402) fail(`/batch should challenge with 402, got ${batch.res.status}`);
+  console.log('PASS expanded product routes unpaid challenges -> 402');
+}
+
+const analytics = await getJson('/analytics');
+if (!analytics.res.ok || analytics.body?.privacy?.storesWalletAddresses !== false) {
+  fail('/analytics did not return privacy-safe aggregate counters');
+}
+console.log(`PASS /analytics -> ${analytics.res.status}`);
 
 console.log('Smoke test complete.');

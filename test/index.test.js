@@ -49,6 +49,9 @@ const MANAGED_KEYS = [
   'PAY_TO',
   'FACILITATOR_URL',
   'EXPLAIN_PRICE_USD',
+  'GROUP_PRICE_USD',
+  'BATCH_PRICE_USD',
+  'ACCOUNT_PRICE_USD',
   'TRUST_PROXY',
   'PUBLIC_BASE_URL',
 ];
@@ -131,6 +134,10 @@ console.log('\nindex.js (free mode) — basic endpoints & hardening');
     assert.strictEqual(body.openapi, '3.1.0');
     assert.ok(body.paths['/explain'], 'OpenAPI spec should document /explain');
     assert.ok(body.paths['/demo'], 'OpenAPI spec should document /demo');
+    assert.ok(body.paths['/group'], 'OpenAPI spec should document /group');
+    assert.ok(body.paths['/batch'], 'OpenAPI spec should document /batch');
+    assert.ok(body.paths['/account/activity'], 'OpenAPI spec should document account activity');
+    assert.ok(body.paths['/analytics'], 'OpenAPI spec should document analytics');
   });
 
   await test('/demo returns a free allowlisted Mainnet explanation', async () => {
@@ -147,6 +154,16 @@ console.log('\nindex.js (free mode) — basic endpoints & hardening');
   await test('/demo rejects transactions outside its allowlist', async () => {
     const res = await fetch(`${baseUrl}/demo?example=arbitrary`);
     assert.strictEqual(res.status, 400);
+  });
+
+  await test('/analytics exposes aggregate privacy-safe adoption counters', async () => {
+    const res = await fetch(`${baseUrl}/analytics`);
+    const body = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.service, 'tx402');
+    assert.strictEqual(body.privacy.storesIpAddresses, false);
+    assert.strictEqual(body.privacy.storesWalletAddresses, false);
+    assert.ok(body.funnel.demoCalls >= 2);
   });
 
   await test('/.well-known/agent.json returns agent marketplace metadata', async () => {

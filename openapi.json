@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "tx402 API",
-    "version": "0.1.0",
-    "description": "Plain-English explanations of Algorand transactions, sold as a pay-per-call API with x402."
+    "version": "0.2.0",
+    "description": "Deterministic explanations of Algorand transactions, atomic groups, batches, and account activity, sold as pay-per-call APIs with x402."
   },
   "servers": [
     {
@@ -207,6 +207,84 @@
         }
       }
     },
+    "/analytics": {
+      "get": {
+        "summary": "Aggregate adoption analytics",
+        "description": "Process-local counters with no cookies, IP history, query strings, or wallet addresses retained.",
+        "responses": {
+          "200": {
+            "description": "Privacy-conscious aggregate adoption counters.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalyticsResponse" } } }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/group": {
+      "get": {
+        "summary": "Explain an Algorand atomic transaction group",
+        "description": "Resolves the complete group containing txid, including nested inner transactions, transfers, fees, and verified protocol calls. Production requires x402 payment.",
+        "parameters": [
+          { "name": "txid", "in": "query", "required": true, "schema": { "type": "string", "pattern": "^[A-Z2-7]{52}$" } },
+          { "name": "network", "in": "query", "required": false, "schema": { "type": "string", "enum": ["mainnet", "testnet"], "default": "mainnet" } }
+        ],
+        "responses": {
+          "200": { "description": "Complete group explanation.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GroupResponse" } } } },
+          "400": { "description": "Invalid input.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "402": { "description": "x402 payment required.", "headers": { "payment-required": { "schema": { "type": "string" } } } },
+          "404": { "description": "Transaction or group not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "Rate limit exceeded.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/batch": {
+      "post": {
+        "summary": "Explain a batch of Algorand transactions",
+        "description": "Explains 1 to 10 unique transaction IDs with per-item success or error results. Production requires x402 payment.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["txids"],
+                "properties": {
+                  "txids": { "type": "array", "minItems": 1, "maxItems": 10, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z2-7]{52}$" } },
+                  "network": { "type": "string", "enum": ["mainnet", "testnet"], "default": "mainnet" }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Batch explanation with per-item results.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BatchResponse" } } } },
+          "400": { "description": "Invalid request body.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "402": { "description": "x402 payment required.", "headers": { "payment-required": { "schema": { "type": "string" } } } },
+          "429": { "description": "Rate limit exceeded.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/account/activity": {
+      "get": {
+        "summary": "Summarize recent Algorand account activity",
+        "description": "Aggregates asset flows, fees, counterparties, transaction types, and verified protocol interactions for portfolio and compliance agents. Production requires x402 payment.",
+        "parameters": [
+          { "name": "address", "in": "query", "required": true, "schema": { "type": "string", "minLength": 58, "maxLength": 58 } },
+          { "name": "network", "in": "query", "required": false, "schema": { "type": "string", "enum": ["mainnet", "testnet"], "default": "mainnet" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 25 } }
+        ],
+        "responses": {
+          "200": { "description": "Account activity summary.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountActivityResponse" } } } },
+          "400": { "description": "Invalid input.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "402": { "description": "x402 payment required.", "headers": { "payment-required": { "schema": { "type": "string" } } } },
+          "429": { "description": "Rate limit exceeded.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
     "/explain": {
       "get": {
         "summary": "Explain an Algorand transaction",
@@ -388,6 +466,72 @@
           }
         ]
       },
+      "GroupResponse": {
+        "type": "object",
+        "required": ["anchorTxid", "network", "atomic", "summary", "transactionCount", "transactions"],
+        "properties": {
+          "anchorTxid": { "type": "string" },
+          "network": { "type": "string", "enum": ["mainnet", "testnet"] },
+          "groupId": { "type": ["string", "null"] },
+          "atomic": { "type": "boolean" },
+          "summary": { "type": "string" },
+          "transactionCount": { "type": "integer" },
+          "innerTransactionCount": { "type": "integer" },
+          "protocols": { "type": "array", "items": { "$ref": "#/components/schemas/VerifiedProtocol" } },
+          "transfers": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "transactions": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        },
+        "additionalProperties": true
+      },
+      "BatchResponse": {
+        "type": "object",
+        "required": ["network", "requested", "succeeded", "failed", "results"],
+        "properties": {
+          "network": { "type": "string", "enum": ["mainnet", "testnet"] },
+          "requested": { "type": "integer" },
+          "succeeded": { "type": "integer" },
+          "failed": { "type": "integer" },
+          "results": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        }
+      },
+      "AccountActivityResponse": {
+        "type": "object",
+        "required": ["address", "network", "summary", "transactionCount", "totals", "recentTransactions"],
+        "properties": {
+          "address": { "type": "string" },
+          "network": { "type": "string", "enum": ["mainnet", "testnet"] },
+          "summary": { "type": "string" },
+          "transactionCount": { "type": "integer" },
+          "uniqueCounterparties": { "type": "integer" },
+          "totals": { "type": "object", "additionalProperties": true },
+          "protocols": { "type": "array", "items": { "$ref": "#/components/schemas/VerifiedProtocol" } },
+          "recentTransactions": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        },
+        "additionalProperties": true
+      },
+      "VerifiedProtocol": {
+        "type": "object",
+        "required": ["protocol", "application", "appId", "source"],
+        "properties": {
+          "protocol": { "type": "string" },
+          "application": { "type": "string" },
+          "component": { "type": "string" },
+          "category": { "type": "string" },
+          "appId": { "type": "integer" },
+          "source": { "type": "string", "format": "uri" }
+        }
+      },
+      "AnalyticsResponse": {
+        "type": "object",
+        "required": ["service", "since", "privacy", "funnel", "routes"],
+        "properties": {
+          "service": { "type": "string", "const": "tx402" },
+          "since": { "type": "string", "format": "date-time" },
+          "privacy": { "type": "object", "additionalProperties": { "type": "boolean" } },
+          "funnel": { "type": "object", "additionalProperties": true },
+          "routes": { "type": "object", "additionalProperties": true }
+        }
+      },
       "DecodedTransaction": {
         "type": "object",
         "required": [
@@ -433,17 +577,27 @@
               "assetId": { "type": "integer" },
               "assetName": { "type": "string" },
               "unit": { "type": "string" },
+              "decimals": { "type": "integer" },
+              "assetVerified": { "type": "boolean" },
               "closeRemainderTo": { "type": ["string", "null"] }
             }
           },
           "application": {
             "type": ["object", "null"],
             "properties": {
-              "id": { "type": "integer" },
-              "name": { "type": "string" },
-              "category": { "type": "string" },
-              "verified": { "type": "boolean" }
+              "appId": { "type": ["integer", "null"] },
+              "protocol": { "type": ["string", "null"] },
+              "protocolName": { "type": ["string", "null"] },
+              "component": { "type": ["string", "null"] },
+              "protocolCategory": { "type": ["string", "null"] },
+              "protocolVerified": { "type": "boolean" },
+              "protocolSource": { "type": ["string", "null"] },
+              "action": { "type": ["string", "null"] }
             }
+          },
+          "innerTransactions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DecodedTransaction" }
           }
         },
         "additionalProperties": true

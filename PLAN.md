@@ -54,7 +54,7 @@ Published and verified:
 
 ## 4. Broader product value
 
-Status: planned
+Status: implementation complete — production deployment pending
 
 - Explain complete Algorand atomic transaction groups.
 - Add a batch explanation endpoint.
@@ -62,9 +62,19 @@ Status: planned
   high-value Algorand applications.
 - Add account-activity summaries for portfolio and compliance agents.
 
+Implemented in v0.2.0:
+
+- `GET /group` resolves all outer legs and recursively decoded inner transactions.
+- `POST /batch` returns per-item results for 1 to 10 unique transaction IDs.
+- `GET /account/activity` aggregates asset flows, fees, counterparties, types,
+  and verified protocol interactions for up to 50 recent transactions.
+- Tinyman, Folks Finance, and Pact app IDs are labeled only from exact entries
+  verified against protocol-owned documentation or official SDKs; every label
+  includes its verification source.
+
 ## 5. Targeted distribution
 
-Status: planned
+Status: implementation complete — external outreach posting pending
 
 - Present tx402 to Algorand wallet, explorer, portfolio, tax, and compliance
   developers with copy-paste integrations.
@@ -73,12 +83,32 @@ Status: planned
   X, and hackathon showcase.
 - Propose an integration example for the GoPlausible Algorand MCP ecosystem.
 
+Prepared:
+
+- Copy-paste integration guide for wallets, explorers, portfolio, tax,
+  compliance, JavaScript, x402, and MCP clients.
+- Distribution checklist, ready-to-post forum/Discord/X copy, and a dedicated
+  GoPlausible MCP composition proposal.
+- Agent, x402, OpenAPI, llms.txt, Bazaar, npm, and MCP Registry surfaces updated
+  for the expanded product. Posting from external project accounts remains a
+  maintainer action so no unsolicited messages are sent automatically.
+
 ## 6. Adoption analytics
 
-Status: planned
+Status: implementation complete — production deployment pending
 
 - Measure landing-page visits, demo calls, 402 challenges, successful paid
   calls, unique external payer addresses, and repeat usage.
 - Track the conversion from demo to payment without collecting wallet secrets
   or unnecessary personal data.
 - Use those measurements to prioritize product coverage and distribution.
+
+Implemented:
+
+- `GET /analytics` reports aggregate funnel and per-route counters.
+- Successful paid calls derive an in-memory salted payer hash solely to count
+  unique and repeat usage; hashes and wallet addresses are never returned.
+- Application access logs omit query strings and IP addresses. Analytics uses
+  no cookies and stores no raw payment headers or wallet addresses.
+- Counters reset with the process; aggregate snapshots are emitted to deployment
+  logs every 15 minutes for operational history.

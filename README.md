@@ -9,9 +9,9 @@ Live service:
 https://tx402-production.up.railway.app
 ```
 
-Give it a transaction ID, get back a human-readable sentence plus structured
-fields with scaled amounts, asset names, decoded notes, fees, timestamps, and
-counterparties.
+Explain one transaction, every leg of an atomic group, a batch of IDs, or recent
+account activity. Responses include scaled amounts, inner transactions, asset
+names, fees, timestamps, counterparties, and source-verified protocol labels.
 
 Try the free fixed-transaction demo without a wallet:
 
@@ -61,9 +61,13 @@ Public routes:
 - `GET /llms.txt` - agent-readable documentation
 - `GET /demo?example=algo|usdc` - free allowlisted Mainnet examples
 - `GET /explain?txid=...&network=mainnet` - paid transaction explanation
+- `GET /group?txid=...&network=mainnet` - paid atomic-group explanation
+- `POST /batch` - paid batch of 1 to 10 transaction IDs
+- `GET /account/activity?address=...&limit=25` - paid activity summary
+- `GET /analytics` - free aggregate adoption counters
 
-`/explain` is priced at `$0.005` per call. Production currently accepts Mainnet
-USDC:
+Default prices are `$0.005` for `/explain`, `$0.01` for `/group`, `$0.02` for
+`/batch`, and `$0.01` for `/account/activity`. Production accepts Mainnet USDC:
 
 - network: `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=`
 - asset: `31566704`
@@ -79,8 +83,11 @@ Core:
   normalized transaction object.
 - [src/narrator.js](./src/narrator.js) converts that normalized object into one
   readable sentence.
+- [src/insights.js](./src/insights.js) builds group and account-level summaries.
+- [src/explainer.js](./src/explainer.js) resolves assets and orchestrates the
+  single, group, batch, and account products.
 - [src/knownApps.js](./src/knownApps.js) maps known app and asset IDs to human
-  labels, while avoiding unverified protocol claims.
+  labels with a verification source for every narrated protocol claim.
 
 Serving shell:
 
@@ -91,10 +98,12 @@ Serving shell:
 - [src/payments.js](./src/payments.js) declares the x402 price and receiver, then
   delegates verification and settlement to the hosted GoPlausible facilitator.
 - [src/rateLimit.js](./src/rateLimit.js) provides the in-memory per-IP limiter.
+- [src/analytics.js](./src/analytics.js) keeps aggregate process-local adoption
+  counters without cookies, raw wallet addresses, query strings, or IP history.
 
 The server never stores private keys. Buyer signing happens client-side. The
 resource server only advertises a price, validates payment, and settles through
-the facilitator after a successful `/explain` response.
+the facilitator after a successful product-route response.
 
 ## Run Locally
 
@@ -110,6 +119,7 @@ Local endpoints:
 curl "http://localhost:4021/health"
 curl "http://localhost:4021/discovery"
 curl "http://localhost:4021/explain?txid=SOME_REAL_MAINNET_TXID"
+curl "http://localhost:4021/group?txid=SOME_REAL_MAINNET_TXID"
 ```
 
 The app reads `.env` when present. Leave `USDC_ASSET_ID` unset unless you need a
@@ -121,6 +131,7 @@ Read-only example client:
 
 ```bash
 npm run example:client
+npm run example:catalog
 ```
 
 The default client prints discovery metadata and the x402 payment challenge
@@ -137,6 +148,13 @@ Agent marketplace metadata:
 - `https://tx402-production.up.railway.app/.well-known/agent.json`
 - `https://tx402-production.up.railway.app/.well-known/x402`
 - `https://tx402-production.up.railway.app/llms.txt`
+
+Copy-paste integrations and distribution assets:
+
+- [Integration guide](./docs/INTEGRATIONS.md)
+- [Distribution checklist](./docs/DISTRIBUTION.md)
+- [GoPlausible MCP proposal](./docs/GOPLAUSIBLE_PROPOSAL.md)
+- [Outreach kit](./submission/outreach-kit.md)
 
 The paid route also declares the standard x402 Bazaar extension, including its
 input/output schemas, service metadata, and example request. Facilitators can
@@ -172,8 +190,9 @@ The six-part adoption roadmap is tracked in [PLAN.md](./PLAN.md).
   notes. JSON output is safe as JSON, but consumers rendering HTML must escape it.
 - Invalid `txid` input is rejected before indexer access and before payment.
 - Payment only settles after a successful response.
-- `/explain`, `/discovery`, and deep health checks are rate-limited.
+- All product routes, `/analytics`, `/discovery`, and deep health checks are rate-limited.
 - Protocol/app names are only stated as fact when marked `verified: true`.
+- Application logs omit query strings and client IP addresses.
 
 ## Status
 

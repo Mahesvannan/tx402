@@ -42,6 +42,9 @@ const MANAGED_KEYS = [
   'PAY_TO',
   'FACILITATOR_URL',
   'EXPLAIN_PRICE_USD',
+  'GROUP_PRICE_USD',
+  'BATCH_PRICE_USD',
+  'ACCOUNT_PRICE_USD',
   'TRUST_PROXY',
   'PUBLIC_BASE_URL',
 ];
@@ -121,6 +124,56 @@ await test('a well-formed txid correctly reaches the payment gate (402)', async 
     challenge.extensions.bazaar.info.input.queryParams.txid,
     'YRSG7IKDPCK4XMKFFTFFFYMIHF6SJOMHUOIE4FFUWNLEQ4WG2ZOQ'
   );
+});
+
+await test('group validation runs before its payment gate', async () => {
+  const invalid = await fetch(`${baseUrl}/group?txid=bad`);
+  assert.strictEqual(invalid.status, 400);
+  assert.strictEqual(invalid.headers.get('payment-required'), null);
+
+  const valid = await fetch(`${baseUrl}/group?txid=${WELL_FORMED_TXID}`);
+  assert.strictEqual(valid.status, 402);
+  assert.ok(valid.headers.get('payment-required'));
+});
+
+await test('batch validation runs before its payment gate', async () => {
+  const malformed = await fetch(`${baseUrl}/batch`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+  assert.strictEqual(malformed.status, 400);
+  assert.strictEqual(malformed.headers.get('payment-required'), null);
+
+  const invalid = await fetch(`${baseUrl}/batch`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ txids: [] }),
+  });
+  assert.strictEqual(invalid.status, 400);
+  assert.strictEqual(invalid.headers.get('payment-required'), null);
+
+  const valid = await fetch(`${baseUrl}/batch`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ txids: [WELL_FORMED_TXID] }),
+  });
+  assert.strictEqual(valid.status, 402);
+  const header = valid.headers.get('payment-required');
+  assert.ok(header);
+  const challenge = JSON.parse(Buffer.from(header, 'base64').toString('utf8'));
+  assert.strictEqual(challenge.extensions.bazaar.info.input.method, 'POST');
+  assert.strictEqual(challenge.extensions.bazaar.info.input.bodyType, 'json');
+});
+
+await test('account validation runs before its payment gate', async () => {
+  const invalid = await fetch(`${baseUrl}/account/activity?address=bad`);
+  assert.strictEqual(invalid.status, 400);
+  assert.strictEqual(invalid.headers.get('payment-required'), null);
+
+  const valid = await fetch(`${baseUrl}/account/activity?address=${VALID_ADDR}&limit=10`);
+  assert.strictEqual(valid.status, 402);
+  assert.ok(valid.headers.get('payment-required'));
 });
 
 await test('/demo stays free when payments are configured', async () => {

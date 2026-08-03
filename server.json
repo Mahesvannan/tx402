@@ -2,17 +2,17 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Mahesvannan/tx402",
   "title": "tx402",
-  "description": "Explain Algorand transactions in plain English through a deterministic x402-paid API.",
+  "description": "Explain Algorand transactions, groups, batches, and account activity with x402.",
   "repository": {
     "url": "https://github.com/Mahesvannan/tx402",
     "source": "github"
   },
-  "version": "0.1.1",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "tx402-mcp",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       }

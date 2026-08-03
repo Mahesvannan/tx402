@@ -11,13 +11,22 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
-import { fetchTransaction, fetchAsset, checkIndexerHealth, HttpError } from './indexer.js';
-import { decodeTransaction } from './decoder.js';
-import { narrate } from './narrator.js';
+import { isValidAlgorandAddress } from '@x402/avm';
+import { checkIndexerHealth, HttpError } from './indexer.js';
+import {
+  explainAccountActivity,
+  explainAtomicGroup,
+  explainBatch,
+  explainTransaction,
+} from './explainer.js';
+import { analyticsMiddleware, analyticsSnapshot } from './analytics.js';
 import {
   buildPaymentGate,
   paymentsConfigured,
   explainPrice,
+  groupPrice,
+  batchPrice,
+  accountPrice,
   resolvedNetwork,
   paymentNetwork,
   usdcAssetId,
@@ -67,6 +76,7 @@ if (process.env.TRUST_PROXY === '1') {
 
 app.use(helmet());
 app.use(express.json({ limit: '8kb' }));
+app.use(analyticsMiddleware);
 app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: false }));
 
 // Minimal access log — method, path, status, latency, client IP. Enough for
@@ -75,8 +85,9 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', ind
 // is logged, including ones later rejected by validation or rate limiting.
 app.use((req, res, next) => {
   const start = Date.now();
+  const pathname = req.path;
   res.on('finish', () => {
-    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms ${req.ip}`);
+    console.log(`${req.method} ${pathname} ${res.statusCode} ${Date.now() - start}ms`);
   });
   next();
 });
@@ -110,6 +121,7 @@ const explainLimiter = paymentsConfigured
         'per IP. Configure PAY_TO to enable paid access without this cap.',
     });
 app.use('/explain', explainLimiter);
+app.use(['/group', '/batch', '/account/activity'], explainLimiter);
 
 // Validate the request shape BEFORE the payment gate. The gate can't know
 // anything about our route's business rules — without this, a client would
@@ -135,6 +147,60 @@ app.use('/explain', (req, res, next) => {
   next();
 });
 
+app.use('/group', (req, res, next) => {
+  const txid = (getQueryString(req, 'txid') || '').trim().toUpperCase();
+  if (!TXID_PATTERN.test(txid)) {
+    return res.status(400).json({
+      error: 'Invalid txid: expected 52 base32 characters (A-Z, 2-7).',
+    });
+  }
+  const network = (getQueryString(req, 'network') || 'mainnet').trim();
+  if (network !== 'mainnet' && network !== 'testnet') {
+    return res.status(400).json({ error: 'Invalid network: use "mainnet" or "testnet".' });
+  }
+  next();
+});
+
+app.use('/batch', (req, res, next) => {
+  if (req.method !== 'POST') return next();
+  const txids = req.body?.txids;
+  const network = typeof req.body?.network === 'string' ? req.body.network.trim() : 'mainnet';
+  if (!Array.isArray(txids) || txids.length < 1 || txids.length > 10) {
+    return res.status(400).json({ error: 'txids must be an array containing 1 to 10 transaction IDs.' });
+  }
+  const normalized = txids.map((txid) =>
+    typeof txid === 'string' ? txid.trim().toUpperCase() : ''
+  );
+  if (normalized.some((txid) => !TXID_PATTERN.test(txid))) {
+    return res.status(400).json({ error: 'Every txid must be 52 base32 characters (A-Z, 2-7).' });
+  }
+  if (new Set(normalized).size !== normalized.length) {
+    return res.status(400).json({ error: 'Duplicate transaction IDs are not allowed.' });
+  }
+  if (network !== 'mainnet' && network !== 'testnet') {
+    return res.status(400).json({ error: 'Invalid network: use "mainnet" or "testnet".' });
+  }
+  req.body = { txids: normalized, network };
+  next();
+});
+
+app.use('/account/activity', (req, res, next) => {
+  const address = (getQueryString(req, 'address') || '').trim().toUpperCase();
+  const network = (getQueryString(req, 'network') || 'mainnet').trim();
+  const limitText = (getQueryString(req, 'limit') || '25').trim();
+  const limit = Number(limitText);
+  if (!isValidAlgorandAddress(address)) {
+    return res.status(400).json({ error: 'Invalid Algorand account address.' });
+  }
+  if (network !== 'mainnet' && network !== 'testnet') {
+    return res.status(400).json({ error: 'Invalid network: use "mainnet" or "testnet".' });
+  }
+  if (!/^\d+$/.test(limitText) || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return res.status(400).json({ error: 'limit must be an integer from 1 to 50.' });
+  }
+  next();
+});
+
 const discoveryLimiter = rateLimit({ windowMs: 60_000, max: 120 });
 app.use('/discovery', discoveryLimiter);
 
@@ -145,6 +211,9 @@ const demoLimiter = rateLimit({
 });
 app.use('/demo', demoLimiter);
 
+const analyticsLimiter = rateLimit({ windowMs: 60_000, max: 60 });
+app.use('/analytics', analyticsLimiter);
+
 function publicUrl(pathname) {
   return `${PUBLIC_BASE_URL}${pathname}`;
 }
@@ -154,7 +223,12 @@ function x402Manifest() {
     version: 1,
     name: PROJECT_NAME,
     description: PROJECT_DESCRIPTION,
-    resources: [publicUrl('/explain')],
+    resources: [
+      publicUrl('/explain'),
+      publicUrl('/group'),
+      publicUrl('/batch'),
+      publicUrl('/account/activity'),
+    ],
     endpoints: [
       {
         url: publicUrl('/explain'),
@@ -178,6 +252,36 @@ function x402Manifest() {
               },
             ]
           : [],
+      },
+      {
+        url: publicUrl('/group'),
+        method: 'GET',
+        description: 'Explain every outer and inner transaction in an Algorand atomic group.',
+        input: {
+          txid: 'required transaction ID belonging to the group',
+          network: 'optional: mainnet or testnet; defaults to mainnet',
+        },
+        price: paymentsConfigured ? groupPrice : null,
+        paymentProtocol: paymentsConfigured ? 'x402' : null,
+        accepts: paymentsConfigured ? [{ scheme: 'exact', network: paymentNetwork, asset: usdcAssetId, assetSymbol: 'USDC', payTo }] : [],
+      },
+      {
+        url: publicUrl('/batch'),
+        method: 'POST',
+        description: 'Explain 1 to 10 Algorand transactions in one request.',
+        input: { txids: 'required array of 1 to 10 unique transaction IDs', network: 'optional: mainnet or testnet' },
+        price: paymentsConfigured ? batchPrice : null,
+        paymentProtocol: paymentsConfigured ? 'x402' : null,
+        accepts: paymentsConfigured ? [{ scheme: 'exact', network: paymentNetwork, asset: usdcAssetId, assetSymbol: 'USDC', payTo }] : [],
+      },
+      {
+        url: publicUrl('/account/activity'),
+        method: 'GET',
+        description: 'Summarize recent account activity, asset flows, counterparties, fees, and verified protocols.',
+        input: { address: 'required Algorand address', network: 'optional: mainnet or testnet', limit: 'optional: 1 to 50; defaults to 25' },
+        price: paymentsConfigured ? accountPrice : null,
+        paymentProtocol: paymentsConfigured ? 'x402' : null,
+        accepts: paymentsConfigured ? [{ scheme: 'exact', network: paymentNetwork, asset: usdcAssetId, assetSymbol: 'USDC', payTo }] : [],
       },
       {
         url: publicUrl('/demo'),
@@ -239,6 +343,27 @@ function agentManifest() {
         tags: ['algorand', 'transactions', 'demo'],
         examples: [`GET ${publicUrl('/demo')}?example=algo`],
       },
+      {
+        id: 'explain-atomic-group',
+        name: 'Explain an Algorand atomic group',
+        description: 'Explain all outer and inner transactions, transfers, fees, and verified protocol calls in one atomic group.',
+        tags: ['algorand', 'atomic-groups', 'defi', 'x402'],
+        examples: [`GET ${publicUrl('/group')}?txid={ALGORAND_TXID}`],
+      },
+      {
+        id: 'explain-transaction-batch',
+        name: 'Explain an Algorand transaction batch',
+        description: 'Explain up to 10 transaction IDs in one deterministic request.',
+        tags: ['algorand', 'batch', 'portfolio', 'x402'],
+        examples: [`POST ${publicUrl('/batch')}`],
+      },
+      {
+        id: 'summarize-account-activity',
+        name: 'Summarize Algorand account activity',
+        description: 'Summarize recent asset flows, fees, counterparties, and verified protocol interactions for an account.',
+        tags: ['algorand', 'portfolio', 'compliance', 'x402'],
+        examples: [`GET ${publicUrl('/account/activity')}?address={ALGORAND_ADDRESS}`],
+      },
     ],
     x402: {
       protocol: 'x402',
@@ -287,8 +412,11 @@ The demo needs no wallet or payment and only accepts those fixed examples. Use i
 ## Paid endpoint
 
 - GET ${publicUrl('/explain')}?txid={ALGORAND_TXID}&network=mainnet
+- GET ${publicUrl('/group')}?txid={ALGORAND_TXID}&network=mainnet
+- POST ${publicUrl('/batch')} with JSON { "txids": ["..."], "network": "mainnet" }
+- GET ${publicUrl('/account/activity')}?address={ALGORAND_ADDRESS}&limit=25&network=mainnet
 
-Price: ${explainPrice} USDC per successful explanation.
+Prices: transaction ${explainPrice}, group ${groupPrice}, batch ${batchPrice}, account activity ${accountPrice} USDC per successful response.
 Network: ${paymentNetwork}
 USDC asset ID: ${usdcAssetId}
 Receiver: ${payTo ?? 'not configured'}
@@ -298,7 +426,13 @@ Unpaid paid-route requests return HTTP 402 with x402 payment requirements. Buyer
 
 ## Output
 
-The response includes txid, network, summary, and details with type, sender, receiver, transfer amount, asset, fee, timestamp, note, and application context.
+Responses include normalized transfers, inner transactions, fees, timestamps, notes, and application context. Verified protocol labels include exact contract IDs and their protocol-owned sources. Group, batch, and account endpoints add multi-transaction and activity-level summaries.
+
+## Analytics
+
+- GET ${publicUrl('/analytics')}
+
+This public endpoint exposes aggregate process-local adoption counters. tx402 does not store cookies, IP addresses, query strings, raw payment headers, or wallet addresses for analytics.
 
 Use tx402 when an agent needs to explain an Algorand transaction to a human without maintaining its own indexer decoder.`;
 }
@@ -346,7 +480,7 @@ app.get(['/', '/index.html'], (_req, res) => {
     <img src="/logo.svg" alt="tx402 logo">
     <h1>tx402</h1>
     <p>${PROJECT_SUMMARY}</p>
-    <p>Call <code>GET /explain?txid=...</code>. Unpaid requests return HTTP 402 with x402 payment requirements. Paid calls settle USDC on Algorand and return a deterministic explanation plus structured JSON.</p>
+    <p>Explain one transaction, a complete atomic group, a batch of transaction IDs, or recent account activity. Unpaid requests return HTTP 402; paid calls settle USDC on Algorand and return deterministic structured JSON.</p>
     <section class="demo" aria-labelledby="demo-title">
       <h2 id="demo-title">Try it free</h2>
       <p>No wallet or payment required. Demo requests use fixed Mainnet transactions.</p>
@@ -366,6 +500,8 @@ app.get(['/', '/index.html'], (_req, res) => {
       <a href="/.well-known/x402">x402 manifest</a>
       <a href="/.well-known/agent.json">Agent manifest</a>
       <a href="/llms.txt">llms.txt</a>
+      <a href="/analytics">Analytics</a>
+      <a href="https://github.com/Mahesvannan/tx402/blob/master/docs/INTEGRATIONS.md">Integrate</a>
       <a href="https://github.com/Mahesvannan/tx402">GitHub</a>
     </div>
   </main>
@@ -385,24 +521,6 @@ app.get(['/.well-known/x402', '/.well-known/x402.json'], (_req, res) => {
 app.get('/llms.txt', (_req, res) => {
   res.type('text/plain').send(llmsTxt());
 });
-
-async function explainTransaction(txid, network) {
-  const raw = await fetchTransaction(txid, network);
-
-  let asset = null;
-  if (raw['tx-type'] === 'axfer') {
-    const assetId = raw['asset-transfer-transaction']?.['asset-id'];
-    asset = await fetchAsset(assetId, network);
-  }
-
-  const decoded = decodeTransaction(raw, { asset });
-  return {
-    txid: decoded.txid,
-    network,
-    summary: narrate(decoded),
-    details: decoded,
-  };
-}
 
 // Demo transactions are immutable on-chain, so cache each generated result for
 // the process lifetime. The promise itself is cached to deduplicate concurrent
@@ -505,11 +623,13 @@ async function getDeepHealth(network) {
 const paymentGate = buildPaymentGate();
 if (paymentGate) {
   app.use(paymentGate);
-  console.log(`x402 payments ENABLED for /explain (${explainPrice} per call, ${resolvedNetwork})`);
+  console.log(
+    `x402 payments ENABLED for 4 product routes (${explainPrice}/${groupPrice}/${batchPrice}/${accountPrice}, ${resolvedNetwork})`
+  );
 } else {
   console.warn(
-    'x402 PAY_TO not set in .env — /explain is running FREE (Phase 1 fallback). ' +
-      'Set PAY_TO to a Testnet address opted in to Testnet USDC to enable Phase 2 payments.'
+    'x402 PAY_TO not set — all product routes are running in free development mode. ' +
+      'Set PAY_TO to an address opted in to the configured USDC asset to enable payments.'
   );
 }
 
@@ -581,6 +701,40 @@ app.get('/discovery', (_req, res) => {
         paymentProtocol: paymentsConfigured ? 'x402' : null,
       },
       {
+        path: '/group',
+        method: 'GET',
+        params: {
+          txid: 'required — any transaction ID in the atomic group',
+          network: 'optional — "mainnet" (default) or "testnet"',
+        },
+        priced: paymentsConfigured,
+        price: paymentsConfigured ? groupPrice : null,
+        paymentProtocol: paymentsConfigured ? 'x402' : null,
+      },
+      {
+        path: '/batch',
+        method: 'POST',
+        params: {
+          txids: 'required — JSON array of 1 to 10 unique transaction IDs',
+          network: 'optional — "mainnet" (default) or "testnet"',
+        },
+        priced: paymentsConfigured,
+        price: paymentsConfigured ? batchPrice : null,
+        paymentProtocol: paymentsConfigured ? 'x402' : null,
+      },
+      {
+        path: '/account/activity',
+        method: 'GET',
+        params: {
+          address: 'required — Algorand account address',
+          network: 'optional — "mainnet" (default) or "testnet"',
+          limit: 'optional — 1 to 50 (default 25)',
+        },
+        priced: paymentsConfigured,
+        price: paymentsConfigured ? accountPrice : null,
+        paymentProtocol: paymentsConfigured ? 'x402' : null,
+      },
+      {
         path: '/demo',
         method: 'GET',
         params: {
@@ -612,6 +766,50 @@ app.get('/explain', async (req, res) => {
   }
 });
 
+app.get('/group', async (req, res) => {
+  const txid = getQueryString(req, 'txid').trim().toUpperCase();
+  const network = (getQueryString(req, 'network') || 'mainnet').trim();
+  try {
+    res.json(await explainAtomicGroup(txid, network));
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+    console.error('Unexpected group explanation error:', err);
+    res.status(500).json({ error: 'Internal error while explaining transaction group.' });
+  }
+});
+
+app.post('/batch', async (req, res) => {
+  try {
+    const result = await explainBatch(req.body.txids, req.body.network);
+    if (result.succeeded === 0) {
+      const status = result.results.every((item) => item.status === 404) ? 404 : 502;
+      return res.status(status).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+    console.error('Unexpected batch explanation error:', err);
+    res.status(500).json({ error: 'Internal error while explaining transaction batch.' });
+  }
+});
+
+app.get('/account/activity', async (req, res) => {
+  const address = getQueryString(req, 'address').trim().toUpperCase();
+  const network = (getQueryString(req, 'network') || 'mainnet').trim();
+  const limit = Number(getQueryString(req, 'limit') || 25);
+  try {
+    res.json(await explainAccountActivity(address, network, limit));
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+    console.error('Unexpected account activity error:', err);
+    res.status(500).json({ error: 'Internal error while summarizing account activity.' });
+  }
+});
+
+app.get('/analytics', (_req, res) => {
+  res.json(analyticsSnapshot());
+});
+
 // Global fallback error handler — MUST be registered last (Express only
 // treats a 4-arg middleware as an error handler). Catches anything that
 // throws synchronously in middleware/routes before it reaches the /explain
@@ -620,8 +818,11 @@ app.get('/explain', async (req, res) => {
 // absolute file paths, straight into the response body.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
   if (res.headersSent) return next(err);
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Request body must be valid JSON.' });
+  }
+  console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error.' });
 });
 

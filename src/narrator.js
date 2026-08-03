@@ -79,10 +79,13 @@ export function narrate(tx) {
         ? `${a.protocol} (app ${a.appId})`
         : `smart contract ${a.appId}`;
       const action = describeOnCompletion(a.onCompletion);
-      const grouped = tx.isGrouped
-        ? ' This call was part of a grouped transaction, so it likely moved funds alongside other steps.'
+      const operation = a.action && a.onCompletion === 'noop'
+        ? ` using the "${a.action}" operation`
         : '';
-      return `${prefix}wallet ${from} ${action} ${target}.${grouped} Paid ${fee}.`;
+      const grouped = tx.isGrouped
+        ? ' This call was part of an atomic transaction group.'
+        : '';
+      return `${prefix}wallet ${from} ${action} ${target}${operation}.${grouped} Paid ${fee}.`;
     }
 
     case 'acfg':

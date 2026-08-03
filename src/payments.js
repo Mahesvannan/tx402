@@ -77,6 +77,9 @@ if (PAY_TO && !isValidAlgorandAddress(PAY_TO)) {
 }
 
 const EXPLAIN_PRICE = process.env.EXPLAIN_PRICE_USD || '$0.005';
+const GROUP_PRICE = process.env.GROUP_PRICE_USD || '$0.01';
+const BATCH_PRICE = process.env.BATCH_PRICE_USD || '$0.02';
+const ACCOUNT_PRICE = process.env.ACCOUNT_PRICE_USD || '$0.01';
 const PUBLIC_BASE_URL = (
   process.env.PUBLIC_BASE_URL || 'https://tx402-production.up.railway.app'
 ).replace(/\/+$/, '');
@@ -132,9 +135,81 @@ const EXPLAIN_DISCOVERY_EXTENSION = declareDiscoveryExtension({
   },
 });
 
+const GROUP_DISCOVERY_EXTENSION = declareDiscoveryExtension({
+  input: { txid: EXAMPLE_TXID, network: 'mainnet' },
+  inputSchema: {
+    type: 'object',
+    properties: {
+      txid: { type: 'string', pattern: '^[A-Z2-7]{52}$' },
+      network: { type: 'string', enum: ['mainnet', 'testnet'], default: 'mainnet' },
+    },
+    required: ['txid'],
+    additionalProperties: false,
+  },
+  output: {
+    example: {
+      anchorTxid: EXAMPLE_TXID,
+      network: 'mainnet',
+      atomic: false,
+      transactionCount: 1,
+      summary: '1-transaction group, 1 transfer, 0 application calls. Total fees: 0.001 ALGO.',
+    },
+    schema: { type: 'object', additionalProperties: true },
+  },
+});
+
+const BATCH_DISCOVERY_EXTENSION = declareDiscoveryExtension({
+  bodyType: 'json',
+  input: { txids: [EXAMPLE_TXID], network: 'mainnet' },
+  inputSchema: {
+    type: 'object',
+    properties: {
+      txids: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 10,
+        uniqueItems: true,
+        items: { type: 'string', pattern: '^[A-Z2-7]{52}$' },
+      },
+      network: { type: 'string', enum: ['mainnet', 'testnet'], default: 'mainnet' },
+    },
+    required: ['txids'],
+    additionalProperties: false,
+  },
+  output: {
+    example: { network: 'mainnet', requested: 1, succeeded: 1, failed: 0, results: [] },
+    schema: { type: 'object', additionalProperties: true },
+  },
+});
+
+const ACCOUNT_DISCOVERY_EXTENSION = declareDiscoveryExtension({
+  input: {
+    address: 'YSH3C6Q6QZ3JJN62SMFG3MOHOVOYSYSCQD4GFURYFPCGUFRJ2XF25GMRPY',
+    network: 'mainnet',
+    limit: 25,
+  },
+  inputSchema: {
+    type: 'object',
+    properties: {
+      address: { type: 'string', minLength: 58, maxLength: 58 },
+      network: { type: 'string', enum: ['mainnet', 'testnet'], default: 'mainnet' },
+      limit: { type: 'integer', minimum: 1, maximum: 50, default: 25 },
+    },
+    required: ['address'],
+    additionalProperties: false,
+  },
+  output: {
+    example: { network: 'mainnet', transactionCount: 25, summary: 'Recent account activity.' },
+    schema: { type: 'object', additionalProperties: true },
+  },
+});
+
 export const paymentsConfigured = Boolean(PAY_TO);
 
 export const explainPrice = EXPLAIN_PRICE;
+export const groupPrice = GROUP_PRICE;
+export const batchPrice = BATCH_PRICE;
+export const accountPrice = ACCOUNT_PRICE;
 
 /** 'mainnet' or 'testnet' — for status messages, never hardcode "Testnet" instead. */
 export const resolvedNetwork = RESOLVED_NETWORK;
@@ -195,6 +270,45 @@ export function buildPaymentGate() {
       tags: ['algorand', 'transaction', 'explainer', 'x402', 'USDC'],
       iconUrl: `${PUBLIC_BASE_URL}/logo.svg`,
       extensions: EXPLAIN_DISCOVERY_EXTENSION,
+    },
+    'GET /group': {
+      accepts: {
+        scheme: 'exact', network: NETWORK, payTo: PAY_TO, price: GROUP_PRICE,
+        extra: { asset: USDC_ASSET_ID },
+      },
+      description: 'Explain every outer and inner transaction in an Algorand atomic group.',
+      resource: `${PUBLIC_BASE_URL}/group`,
+      mimeType: 'application/json',
+      serviceName: 'tx402',
+      tags: ['algorand', 'atomic-group', 'explainer', 'x402', 'USDC'],
+      iconUrl: `${PUBLIC_BASE_URL}/logo.svg`,
+      extensions: GROUP_DISCOVERY_EXTENSION,
+    },
+    'POST /batch': {
+      accepts: {
+        scheme: 'exact', network: NETWORK, payTo: PAY_TO, price: BATCH_PRICE,
+        extra: { asset: USDC_ASSET_ID },
+      },
+      description: 'Explain up to 10 Algorand transactions in one deterministic batch.',
+      resource: `${PUBLIC_BASE_URL}/batch`,
+      mimeType: 'application/json',
+      serviceName: 'tx402',
+      tags: ['algorand', 'batch', 'explainer', 'x402', 'USDC'],
+      iconUrl: `${PUBLIC_BASE_URL}/logo.svg`,
+      extensions: BATCH_DISCOVERY_EXTENSION,
+    },
+    'GET /account/activity': {
+      accepts: {
+        scheme: 'exact', network: NETWORK, payTo: PAY_TO, price: ACCOUNT_PRICE,
+        extra: { asset: USDC_ASSET_ID },
+      },
+      description: 'Summarize recent Algorand account activity for portfolio and compliance agents.',
+      resource: `${PUBLIC_BASE_URL}/account/activity`,
+      mimeType: 'application/json',
+      serviceName: 'tx402',
+      tags: ['algorand', 'account', 'portfolio', 'compliance', 'x402', 'USDC'],
+      iconUrl: `${PUBLIC_BASE_URL}/logo.svg`,
+      extensions: ACCOUNT_DISCOVERY_EXTENSION,
     },
   };
 

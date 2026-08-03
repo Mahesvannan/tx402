@@ -34,7 +34,10 @@ async function test(name, fn) {
 // '') before each import so dotenv.config() -- which only fills in keys NOT
 // already present in process.env -- can never leak a real local .env file's
 // values into these tests, regardless of what's on the developer's machine.
-const MANAGED_KEYS = ['NETWORK', 'USDC_ASSET_ID', 'PAY_TO', 'FACILITATOR_URL', 'EXPLAIN_PRICE_USD'];
+const MANAGED_KEYS = [
+  'NETWORK', 'USDC_ASSET_ID', 'PAY_TO', 'FACILITATOR_URL',
+  'EXPLAIN_PRICE_USD', 'GROUP_PRICE_USD', 'BATCH_PRICE_USD', 'ACCOUNT_PRICE_USD',
+];
 
 async function importWithEnv(envVars) {
   const saved = {};
@@ -146,6 +149,9 @@ console.log('\npayments.js — price default');
 await test('defaults explainPrice to $0.005', async () => {
   const m = await importWithEnv({});
   assert.strictEqual(m.explainPrice, '$0.005');
+  assert.strictEqual(m.groupPrice, '$0.01');
+  assert.strictEqual(m.batchPrice, '$0.02');
+  assert.strictEqual(m.accountPrice, '$0.01');
 });
 
 await test('respects an explicit EXPLAIN_PRICE_USD', async () => {

@@ -70,8 +70,40 @@ function createFetch() {
 const tx402Fetch = createFetch();
 const server = new McpServer({
   name: 'tx402',
-  version: '0.1.1',
+  version: '0.2.0',
 });
+
+async function asToolResponse(res) {
+  const text = await res.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = { raw: text };
+  }
+
+  if (res.status === 402) {
+    const challenge = decodePaymentChallenge(res.headers.get('payment-required'));
+    return {
+      isError: true,
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          error: 'x402 payment required',
+          enablePayments: 'Set TX402_MCP_ENABLE_PAYMENTS=1 with a funded buyer wallet.',
+          challenge: challenge?.accepts?.[0] || challenge,
+        }, null, 2),
+      }],
+    };
+  }
+  if (!res.ok) {
+    return { isError: true, content: [{ type: 'text', text: JSON.stringify(body, null, 2) }] };
+  }
+  return {
+    content: [{ type: 'text', text: body.summary || JSON.stringify(body, null, 2) }],
+    structuredContent: body,
+  };
+}
 
 server.registerTool(
   'explain_algorand_transaction',
@@ -87,47 +119,57 @@ server.registerTool(
   async ({ txid, network }) => {
     const url = `${SERVER}/explain?txid=${encodeURIComponent(txid)}&network=${encodeURIComponent(network)}`;
     const res = await tx402Fetch(url, { headers: { accept: 'application/json' } });
-    const text = await res.text();
+    return asToolResponse(res);
+  }
+);
 
-    let body = null;
-    try {
-      body = text ? JSON.parse(text) : null;
-    } catch {
-      body = { raw: text };
-    }
+server.registerTool(
+  'explain_algorand_atomic_group',
+  {
+    title: 'Explain Algorand atomic group',
+    description: 'Explain every outer and inner transaction in the atomic group containing a transaction ID.',
+    inputSchema: {
+      txid: z.string().regex(TXID_PATTERN, 'expected 52 base32 characters'),
+      network: z.enum(['mainnet', 'testnet']).default('mainnet'),
+    },
+  },
+  async ({ txid, network }) => {
+    const url = `${SERVER}/group?txid=${encodeURIComponent(txid)}&network=${encodeURIComponent(network)}`;
+    return asToolResponse(await tx402Fetch(url, { headers: { accept: 'application/json' } }));
+  }
+);
 
-    if (res.status === 402) {
-      const challenge = decodePaymentChallenge(res.headers.get('payment-required'));
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(
-              {
-                error: 'x402 payment required',
-                enablePayments: 'Set TX402_MCP_ENABLE_PAYMENTS=1 with a funded buyer wallet.',
-                challenge: challenge?.accepts?.[0] || challenge,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
+server.registerTool(
+  'explain_algorand_transaction_batch',
+  {
+    title: 'Explain Algorand transaction batch',
+    description: 'Explain 1 to 10 Algorand transaction IDs in one request, with per-item results.',
+    inputSchema: {
+      txids: z.array(z.string().regex(TXID_PATTERN, 'expected 52 base32 characters')).min(1).max(10),
+      network: z.enum(['mainnet', 'testnet']).default('mainnet'),
+    },
+  },
+  async ({ txids, network }) => asToolResponse(await tx402Fetch(`${SERVER}/batch`, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ txids, network }),
+  }))
+);
 
-    if (!res.ok) {
-      return {
-        isError: true,
-        content: [{ type: 'text', text: JSON.stringify(body, null, 2) }],
-      };
-    }
-
-    return {
-      content: [{ type: 'text', text: body.summary || JSON.stringify(body, null, 2) }],
-      structuredContent: body,
-    };
+server.registerTool(
+  'summarize_algorand_account_activity',
+  {
+    title: 'Summarize Algorand account activity',
+    description: 'Summarize recent asset flows, fees, counterparties, and verified protocol interactions for an Algorand account.',
+    inputSchema: {
+      address: z.string().refine((value) => algosdk.isValidAddress(value), 'invalid Algorand address'),
+      network: z.enum(['mainnet', 'testnet']).default('mainnet'),
+      limit: z.number().int().min(1).max(50).default(25),
+    },
+  },
+  async ({ address, network, limit }) => {
+    const url = `${SERVER}/account/activity?address=${encodeURIComponent(address)}&network=${encodeURIComponent(network)}&limit=${limit}`;
+    return asToolResponse(await tx402Fetch(url, { headers: { accept: 'application/json' } }));
   }
 );
 

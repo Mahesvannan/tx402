@@ -68,6 +68,27 @@ export function decodeNote(noteB64) {
   }
 }
 
+/** Decode a short printable app argument, while rejecting ABI selectors/binary. */
+export function decodeAppArgument(argB64) {
+  if (!argB64) return null;
+  try {
+    const bytes = Buffer.from(argB64, 'base64');
+    if (bytes.length === 0 || bytes.length > 64) return null;
+    const text = bytes.toString('utf8');
+    if (!/^[\x20-\x7E]+$/.test(text)) return null;
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+function resolveAsset(raw, ctx) {
+  const assetId = raw['asset-transfer-transaction']?.['asset-id'];
+  if (ctx.asset) return ctx.asset;
+  if (ctx.assets instanceof Map) return ctx.assets.get(Number(assetId)) ?? null;
+  return ctx.assets?.[assetId] ?? null;
+}
+
 /**
  * @param {object} raw       transaction object from the indexer
  * @param {object} [ctx]
@@ -98,6 +119,7 @@ export function decodeTransaction(raw, ctx = {}) {
     receiverShort: null,
     transfer: null,
     application: null,
+    innerTransactions: [],
   };
 
   if (type === 'pay') {
@@ -116,7 +138,7 @@ export function decodeTransaction(raw, ctx = {}) {
 
   if (type === 'axfer') {
     const a = raw['asset-transfer-transaction'] ?? {};
-    const asset = ctx.asset ?? {};
+    const asset = resolveAsset(raw, ctx) ?? {};
     const decimals = typeof asset.decimals === 'number' ? asset.decimals : 0;
     base.receiver = a.receiver ?? null;
     base.receiverShort = shortenAddress(a.receiver);
@@ -126,6 +148,8 @@ export function decodeTransaction(raw, ctx = {}) {
       assetId: a['asset-id'] ?? null,
       assetName: asset.name ?? `ASA ${a['asset-id']}`,
       unit: asset.unitName ?? `ASA${a['asset-id']}`,
+      decimals,
+      assetVerified: asset.verified ?? false,
       closeRemainderTo: a['close-to'] ?? null,
     };
     // amount 0 to self is the classic opt-in signature
@@ -135,19 +159,28 @@ export function decodeTransaction(raw, ctx = {}) {
   if (type === 'appl') {
     const app = raw['application-transaction'] ?? {};
     const appId = app['application-id'] ?? null;
-    const known = lookupApp(appId);
+    const known = lookupApp(appId, ctx.network ?? 'mainnet');
+    const args = app['application-args'] ?? [];
     base.application = {
       appId,
       protocol: known?.name ?? null,
+      protocolName: known?.protocol ?? null,
+      component: known?.component ?? null,
       protocolCategory: known?.category ?? null,
       protocolVerified: known?.verified ?? false,
+      protocolSource: known?.source ?? null,
       onCompletion: app['on-completion'] ?? null,
       isCreate: appId === 0 || appId === null,
-      argCount: (app['application-args'] ?? []).length,
+      action: decodeAppArgument(args[0]),
+      argCount: args.length,
       foreignAssets: app['foreign-assets'] ?? [],
       accounts: app.accounts ?? [],
     };
   }
+
+  base.innerTransactions = (raw['inner-txns'] ?? []).map((inner) =>
+    decodeTransaction(inner, { ...ctx, asset: null })
+  );
 
   return base;
 }

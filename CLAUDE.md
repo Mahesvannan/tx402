@@ -35,9 +35,12 @@ gitignored.
 | `src/indexer.js` | AlgoNode indexer client and deep-health indexer probe |
 | `src/decoder.js` | Pure raw transaction decoder |
 | `src/narrator.js` | Pure plain-English narrator |
+| `src/insights.js` | Pure atomic-group and account-activity aggregation |
+| `src/explainer.js` | Indexer/asset orchestration for all product routes |
 | `src/knownApps.js` | App and asset label cache; protocol labels must be verified before use |
 | `src/payments.js` | x402 payment gate configuration; no private keys |
 | `src/rateLimit.js` | In-memory fixed-window per-IP limiter |
+| `src/analytics.js` | Aggregate process-local adoption counters and privacy controls |
 | `public/logo.svg` / `public/favicon.svg` | Public marketplace/landing-page visual assets |
 | `public/demo.js` | CSP-compatible landing-page client for the free allowlisted demo |
 | `scripts/smoke-phase3.mjs` | Public route deployment smoke test |
@@ -45,9 +48,10 @@ gitignored.
 | `scripts/check-phase5-buyer.mjs` | Mainnet buyer balance and opt-in preflight |
 | `scripts/pay-and-explain.mjs` | x402 buyer client for Testnet or confirmed Mainnet payment |
 | `examples/node-client.mjs` | Public client example; read-only by default, optional paid mode |
+| `examples/catalog-client.mjs` | Read-only challenge example for single/group/batch routes |
 | `mcp/tx402-mcp.mjs` | Backwards-compatible entry point for the packaged MCP wrapper |
 | `packages/tx402-mcp/` | Publishable `tx402-mcp` npm package and stdio implementation |
-| `server.json` | Official MCP Registry metadata for `io.github.mahesvannan/tx402` |
+| `server.json` | Official MCP Registry metadata for `io.github.Mahesvannan/tx402` |
 | `openapi.json` | OpenAPI 3.1 document, also served at `/openapi.json` |
 | `PLAN.md` | Adoption roadmap: discovery, demo, packaging, product, distribution, analytics |
 | `test/*.test.js` | No runner dependency; each file is a standalone Node process |
@@ -65,10 +69,15 @@ gitignored.
 - Validate request shape before the payment gate. A request that will fail with
   `400` must not require payment first.
 - Payment settles only after a successful `/explain` response.
+- The same settle-after-success rule applies to `/group`, `/batch`, and
+  `/account/activity`.
 - Do not trust `X-Forwarded-For` unless `TRUST_PROXY=1` is set behind a proxy
   that overwrites inbound forwarding headers.
 - Do not horizontally scale past one instance without replacing the in-memory
   limiter with a shared-store limiter.
+- Do not log query strings, payment headers, wallet addresses, or client IPs.
+  Analytics may retain only salted payer hashes in process memory and expose
+  aggregate counts.
 
 ## Running And Testing
 
@@ -78,7 +87,7 @@ npm start
 npm test
 ```
 
-`npm test` chains five standalone Node scripts. Some tests touch live external
+`npm test` chains six standalone Node scripts. Some tests touch live external
 services: AlgoNode and the GoPlausible facilitator. Paid-mode HTTP tests run in
 a separate process because `src/index.js` imports `src/payments.js` through a
 normal module specifier, and Node module caching pins env-derived payment config
@@ -300,15 +309,29 @@ GET /health?deep=1&network=mainnet
 The deep route is rate-limited and cached for 15 seconds to avoid turning
 monitoring traffic into an upstream amplifier.
 
+Aggregate adoption counters are available at:
+
+```http
+GET /analytics
+```
+
+They track landing-page views, demo calls, 402 challenges, successful paid
+calls, unique/repeat payer aggregates, and route outcomes. Counters are
+process-local and reset on deploy; 15-minute aggregate snapshots are emitted to
+deployment logs. No cookies, raw wallet addresses, query strings, payment
+headers, or IP history are retained.
+
 ## Security Model
 
 - `summary`, `assetName`, `unit`, and `note` may contain attacker-controlled
   on-chain strings. HTML consumers must escape them.
-- `/explain` is rate-limited per IP, with a stricter limit in free mode.
-- `txid` format validation happens before payment.
+- Every product route is rate-limited per IP, with a stricter limit in free mode.
+- Transaction IDs, batch bodies, account addresses, limits, and networks are
+  validated before payment.
 - `PAY_TO` and `USDC_ASSET_ID` are startup-validated.
 - Wrong-network canonical USDC IDs cause startup failure.
-- Unverified protocol mappings are not narrated as fact.
+- Unverified protocol mappings are not narrated as fact. Verified mappings
+  carry the exact protocol-owned source in `src/knownApps.js`.
 
 ## Before Expanding Further
 
@@ -316,8 +339,7 @@ monitoring traffic into an upstream amplifier.
 - If traffic grows, add a shared-store limiter before increasing replicas.
 - If indexer rate limits become visible, set `MAINNET_INDEXER_URL` to a paid
   provider.
-- The biggest product upgrade is group-level transaction explanation instead of
-  explaining only one transaction leg.
+- Persist analytics in a shared store before running multiple replicas.
 
 ## Review History
 
