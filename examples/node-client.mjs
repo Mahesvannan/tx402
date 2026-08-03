@@ -27,7 +27,7 @@ const SERVER = (process.env.TX402_URL || 'https://tx402-production.up.railway.ap
 const NETWORK = process.env.NETWORK || ALGORAND_MAINNET_CAIP2;
 const RESOLVED_NETWORK = getNetworkFromCaip2(NETWORK);
 const TXID =
-  process.argv[2] || '7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ';
+  process.argv[2] || 'YRSG7IKDPCK4XMKFFTFFFYMIHF6SJOMHUOIE4FFUWNLEQ4WG2ZOQ';
 const SHOULD_PAY = process.env.TX402_EXAMPLE_PAY === '1';
 
 function decodePaymentChallenge(header) {

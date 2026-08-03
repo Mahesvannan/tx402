@@ -119,7 +119,7 @@ await test('a well-formed txid correctly reaches the payment gate (402)', async 
   assert.ok(challenge.extensions?.bazaar, 'Bazaar discovery extension should be present');
   assert.strictEqual(
     challenge.extensions.bazaar.info.input.queryParams.txid,
-    '7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ'
+    'YRSG7IKDPCK4XMKFFTFFFYMIHF6SJOMHUOIE4FFUWNLEQ4WG2ZOQ'
   );
 });
 

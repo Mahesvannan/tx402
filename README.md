@@ -20,21 +20,21 @@ https://tx402-production.up.railway.app/demo?example=algo
 ```
 
 ```http
-GET /explain?txid=7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ
+GET /explain?txid=YRSG7IKDPCK4XMKFFTFFFYMIHF6SJOMHUOIE4FFUWNLEQ4WG2ZOQ
 ```
 
 Example response after payment:
 
 ```json
 {
-  "txid": "7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ",
+  "txid": "YRSG7IKDPCK4XMKFFTFFFYMIHF6SJOMHUOIE4FFUWNLEQ4WG2ZOQ",
   "network": "mainnet",
-  "summary": "On June 15, 2019, wallet I3345F...EUBEGU sent 0.10 ALGO to ALGORA...N5DNAU. Paid 0.001 ALGO in fees.",
+  "summary": "On June 16, 2019, wallet VCINCV...JPMIPM sent 1 ALGO to CRBMB5...QLXZOY. Paid 0.001 ALGO in fees.",
   "details": {
     "type": "pay",
-    "sender": "I3345FUQQ2GRBHFZQPLYQQX5HJMMRZMABCHRLWV6RCJYC6OO4MOLEUBEGU",
+    "sender": "VCINCVUX2DBKQ6WP63NOGPEAQAYGHGSGQX7TSH4M5LI5NBPVAGIHJPMIPM",
     "transfer": {
-      "amount": "0.10",
+      "amount": "1",
       "assetId": 0,
       "unit": "ALGO"
     }

@@ -46,7 +46,7 @@ const PROJECT_DESCRIPTION =
 const DEMO_EXAMPLES = Object.freeze({
   algo: Object.freeze({
     label: 'ALGO payment',
-    txid: '7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ',
+    txid: 'YRSG7IKDPCK4XMKFFTFFFYMIHF6SJOMHUOIE4FFUWNLEQ4WG2ZOQ',
   }),
   usdc: Object.freeze({
     label: 'USDC asset transfer',
@@ -228,7 +228,7 @@ function agentManifest() {
           'Given an Algorand transaction ID, return a plain-English summary and structured fields including type, sender, receiver, amount, asset, fee, timestamp, note, and app-call context.',
         tags: ['x402', 'algorand', 'transactions', 'USDC', 'agents'],
         examples: [
-          `GET ${publicUrl('/explain')}?txid=7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ`,
+          `GET ${publicUrl('/explain')}?txid=YRSG7IKDPCK4XMKFFTFFFYMIHF6SJOMHUOIE4FFUWNLEQ4WG2ZOQ`,
         ],
       },
       {

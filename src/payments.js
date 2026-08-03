@@ -80,7 +80,7 @@ const EXPLAIN_PRICE = process.env.EXPLAIN_PRICE_USD || '$0.005';
 const PUBLIC_BASE_URL = (
   process.env.PUBLIC_BASE_URL || 'https://tx402-production.up.railway.app'
 ).replace(/\/+$/, '');
-const EXAMPLE_TXID = '7MK6WLKFBPC323ATSEKNEKUTQZ23TCCM75SJNSFAHEM65GYJ5ANQ';
+const EXAMPLE_TXID = 'YRSG7IKDPCK4XMKFFTFFFYMIHF6SJOMHUOIE4FFUWNLEQ4WG2ZOQ';
 
 const EXPLAIN_DISCOVERY_EXTENSION = declareDiscoveryExtension({
   input: {
@@ -110,12 +110,12 @@ const EXPLAIN_DISCOVERY_EXTENSION = declareDiscoveryExtension({
       txid: EXAMPLE_TXID,
       network: 'mainnet',
       summary:
-        'On June 15, 2019, wallet I3345F…EUBEGU sent 0.10 ALGO to ALGORA…N5DNAU. Paid 0.001 ALGO in fees.',
+        'On June 16, 2019, wallet VCINCV…JPMIPM sent 1 ALGO to CRBMB5…QLXZOY. Paid 0.001 ALGO in fees.',
       details: {
         type: 'pay',
-        sender: 'I3345FUQQ2GRBHFZQPLYQQX5HJMMRZMABCHRLWV6RCJYC6OO4MOLEUBEGU',
-        receiver: 'ALGORANDHQ6MABCU6I6Y4RTPV4KQ5V4O4JAHF7T7VQ6W5GZB7N5DNAU',
-        transfer: { amount: '0.10', assetId: 0, unit: 'ALGO' },
+        sender: 'VCINCVUX2DBKQ6WP63NOGPEAQAYGHGSGQX7TSH4M5LI5NBPVAGIHJPMIPM',
+        receiver: 'CRBMB5UBRPSGGQE3WVMKDJP3NIITR5J6JYPVWASKSLRK6Z6WAHTKQLXZOY',
+        transfer: { amount: '1', assetId: 0, unit: 'ALGO' },
       },
     },
     schema: {
