@@ -34,18 +34,23 @@ Live: `https://tx402-production.up.railway.app/demo?example=algo`
 
 ## 3. One-command MCP installation
 
-Status: ready to publish — maintainer authentication required
+Status: complete
 
 - Package the MCP wrapper as the public `tx402-mcp` npm package.
 - Support `npx tx402-mcp` and document read-only and paid-wallet modes.
 - Add official MCP Registry `server.json` metadata.
 - Validate the package tarball locally, then publish to npm and the MCP
-  Registry when the maintainer is authenticated.
+  Registry.
 
-Prepared and validated: the `tx402-mcp@0.1.1` dry-run tarball contains only the
-package README, executable, and package metadata; `server.json` passes the
-official MCP Registry JSON schema. Remaining external steps require `npm login`
-and MCP Registry GitHub authentication.
+Published and verified:
+
+- npm package: `tx402-mcp@0.1.1`, installable with `npx tx402-mcp`.
+- A clean temporary installation completed the MCP `initialize` and
+  `tools/list` handshake successfully.
+- Official MCP Registry server: `io.github.Mahesvannan/tx402`, version
+  `0.1.1`, status active and latest.
+- The package tarball contains only the package README, executable, and package
+  metadata; `server.json` passes the official MCP Registry JSON schema.
 
 ## 4. Broader product value
 
